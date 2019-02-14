@@ -45,6 +45,10 @@ impl Module {
         access.full || access.create || access.update || access.delete || access.settings_read || access.settings_update
     }
 
+    pub fn is_taking(&self) -> bool {
+        !self.is_teaching()
+    }
+
     pub fn get_announcements(&self, api: &Api, archived: bool) -> Result<Vec<Announcement>> {
         let path = format!("/announcement/{}/{}?sortby=displayFrom%20ASC", if archived { "Archived" } else { "NonArchived" }, self.id);
         let api_data: ApiData = api.api_as_json(&path, Method::GET, None)?;

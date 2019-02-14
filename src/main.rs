@@ -55,12 +55,7 @@ fn print_files(file: &File, api: &Api, prefix: &str) -> Result<bool> {
             print_files(&child, api, &format!("{}/{}", prefix, file.name))?;
         }
     } else {
-        println!(
-            "{}/{}, download url: {}",
-            prefix,
-            file.name,
-            file.get_download_url(api)?
-        );
+        println!("{}/{}", prefix, file.name);
     }
     Ok(true)
 }

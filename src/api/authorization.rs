@@ -145,14 +145,14 @@ impl Authorization {
         self.handle_callback(callback_url)
     }
 
-    pub fn renew(&mut self) -> Result<bool> {
-        if self.jwt.is_none() {
-            return Err("Please login first.")
-        }
-        let auth_url = auth_endpoint_uri();
-        let callback_url = get_redirect_url(self.auth_http_get(auth_url)?)?;
-        self.handle_callback(callback_url)
-    }
+    // pub fn renew(&mut self) -> Result<bool> {
+    //     if self.jwt.is_none() {
+    //         return Err("Please login first.")
+    //     }
+    //     let auth_url = auth_endpoint_uri();
+    //     let callback_url = get_redirect_url(self.auth_http_get(auth_url)?)?;
+    //     self.handle_callback(callback_url)
+    // }
 
     fn handle_callback(&mut self, callback_url: Url) -> Result<bool> {
         let fragment = callback_url.fragment().ok_or("Invalid callback")?;

@@ -24,7 +24,6 @@ struct Term {
 #[derive(Deserialize)]
 struct TermDetail {
     term: String,
-    description: String,
 }
 
 #[derive(Debug, Deserialize)]

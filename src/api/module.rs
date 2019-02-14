@@ -2,6 +2,8 @@ use crate::api::{Api, ApiData, Data};
 use crate::Result;
 use reqwest::Method;
 use serde::Deserialize;
+use std::path::Path;
+use std::fs;
 use url::Url;
 
 #[derive(Debug, Deserialize)]
@@ -113,5 +115,16 @@ impl File {
         } else {
             Err("Invalid API response from server: type mismatch")
         }
+    }
+
+    pub fn download(&self, api: &Api, path: &Path) -> Result<bool> {
+        let download_url = self.get_download_url(api)?;
+        let destination = path.join(self.name.to_owned());
+        if destination.exists() {
+            return Ok(true);
+        }
+        let mut file = fs::File::create(destination).map_err(|_| "Unable to create file")?;
+        reqwest::get(download_url).and_then(|mut r| r.copy_to(&mut file)).map_err(|_|"Failed during download")?;
+        Ok(true)
     }
 }

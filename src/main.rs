@@ -7,9 +7,9 @@ const DESCRIPTION: &str = env!("CARGO_PKG_DESCRIPTION");
 
 mod api;
 
-use api::Api;
 use api::module::{File, Module};
-use clap::{Arg, App};
+use api::Api;
+use clap::{App, Arg};
 use std::collections::HashSet;
 use std::fs;
 use std::io;
@@ -24,7 +24,9 @@ fn get_input(prompt: &str) -> String {
     let mut input = String::new();
     print!("{}", prompt);
     flush_stdout();
-    io::stdin().read_line(&mut input).expect("Unable to get input");
+    io::stdin()
+        .read_line(&mut input)
+        .expect("Unable to get input");
     input.trim().to_string()
 }
 
@@ -36,12 +38,22 @@ fn get_password(prompt: &str) -> String {
 
 fn print_files(file: &File, api: &Api, prefix: &str) -> Result<bool> {
     if file.is_directory {
-        for mut child in file.children.clone().ok_or("children must be preloaded")?.into_iter() {
+        for mut child in file
+            .children
+            .clone()
+            .ok_or("children must be preloaded")?
+            .into_iter()
+        {
             child.load_children(api)?;
             print_files(&child, api, &format!("{}/{}", prefix, file.name))?;
         }
     } else {
-        println!("{}/{}, download url: {}", prefix, file.name, file.get_download_url(api)?);
+        println!(
+            "{}/{}, download url: {}",
+            prefix,
+            file.name,
+            file.get_download_url(api)?
+        );
     }
     Ok(true)
 }
@@ -52,8 +64,12 @@ fn print_announcements(api: &Api, modules: &[Module]) -> Result<bool> {
         println!();
         for announcement in module.get_announcements(&api, false)? {
             println!("=== {} ===", announcement.title);
-            let stripped = ammonia::Builder::new().tags(HashSet::new()).clean(&announcement.description).to_string();
-            let decoded = htmlescape::decode_html(&stripped).map_err(|_|"Unable to decode HTML Entities")?;
+            let stripped = ammonia::Builder::new()
+                .tags(HashSet::new())
+                .clean(&announcement.description)
+                .to_string();
+            let decoded =
+                htmlescape::decode_html(&stripped).map_err(|_| "Unable to decode HTML Entities")?;
             println!("{}", decoded);
         }
         println!();
@@ -72,9 +88,14 @@ fn list_files(api: &Api, modules: &[Module]) -> Result<bool> {
 fn download_file(api: &Api, file: &File, path: &Path) -> Result<bool> {
     let destination = path.join(file.name.to_owned());
     if file.is_directory {
-        fs::create_dir_all(destination.to_owned()).map_err(|_|"Unable to create directory")?;
+        fs::create_dir_all(destination.to_owned()).map_err(|_| "Unable to create directory")?;
 
-        for mut child in file.children.clone().ok_or("children must be preloaded")?.into_iter() {
+        for mut child in file
+            .children
+            .clone()
+            .ok_or("children must be preloaded")?
+            .into_iter()
+        {
             child.load_children(api)?;
             download_file(api, &child, &destination)?;
         }
@@ -106,7 +127,11 @@ fn main() {
         .about(DESCRIPTION)
         .arg(Arg::with_name("announcements").long("announcements"))
         .arg(Arg::with_name("files").long("files"))
-        .arg(Arg::with_name("download").long("download-to").takes_value(true))
+        .arg(
+            Arg::with_name("download")
+                .long("download-to")
+                .takes_value(true),
+        )
         .get_matches();
     let username = get_input("Username: ");
     let password = get_password("Password: ");

@@ -2,8 +2,8 @@ use crate::api::{Api, ApiData, Data};
 use crate::Result;
 use reqwest::Method;
 use serde::Deserialize;
-use std::path::Path;
 use std::fs;
+use std::path::Path;
 use url::Url;
 
 #[derive(Debug, Deserialize)]
@@ -27,7 +27,7 @@ struct Access {
 #[derive(Debug, Deserialize)]
 pub struct Announcement {
     pub title: String,
-    pub description: String
+    pub description: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -44,7 +44,12 @@ pub struct Module {
 impl Module {
     pub fn is_teaching(&self) -> bool {
         let access = &self.access;
-        access.full || access.create || access.update || access.delete || access.settings_read || access.settings_update
+        access.full
+            || access.create
+            || access.update
+            || access.delete
+            || access.settings_read
+            || access.settings_update
     }
 
     pub fn is_taking(&self) -> bool {
@@ -52,7 +57,11 @@ impl Module {
     }
 
     pub fn get_announcements(&self, api: &Api, archived: bool) -> Result<Vec<Announcement>> {
-        let path = format!("/announcement/{}/{}?sortby=displayFrom%20ASC", if archived { "Archived" } else { "NonArchived" }, self.id);
+        let path = format!(
+            "/announcement/{}/{}?sortby=displayFrom%20ASC",
+            if archived { "Archived" } else { "NonArchived" },
+            self.id
+        );
         let api_data: ApiData = api.api_as_json(&path, Method::GET, None)?;
         if let Data::Announcements(announcements) = api_data.data {
             Ok(announcements)
@@ -64,7 +73,12 @@ impl Module {
     }
 
     pub fn as_file(&self, api: &Api, preload_children: bool) -> Result<File> {
-        let mut file = File { id: self.id.to_owned(), name: self.code.to_owned(), is_directory: true, children: None };
+        let mut file = File {
+            id: self.id.to_owned(),
+            name: self.code.to_owned(),
+            is_directory: true,
+            children: None,
+        };
         if preload_children {
             file.load_children(api)?;
         }
@@ -93,14 +107,32 @@ impl File {
         if self.children.is_some() {
             return Ok(true);
         }
-        let subdirs_data: ApiData = api.api_as_json(&format!("/files/?ParentID={}", self.id), Method::GET, None)?;
-        let files_data: ApiData = api.api_as_json(&format!("/files/{}/file", self.id), Method::GET, None)?;
+        let subdirs_data: ApiData =
+            api.api_as_json(&format!("/files/?ParentID={}", self.id), Method::GET, None)?;
+        let files_data: ApiData =
+            api.api_as_json(&format!("/files/{}/file", self.id), Method::GET, None)?;
         let mut subdirs = match subdirs_data.data {
-            Data::ApiFileDirectory(subdirs) => subdirs.into_iter().map(|s|File { id: s.id, name: sanitise_filename(s.name), is_directory: true, children: None }).collect(),
+            Data::ApiFileDirectory(subdirs) => subdirs
+                .into_iter()
+                .map(|s| File {
+                    id: s.id,
+                    name: sanitise_filename(s.name),
+                    is_directory: true,
+                    children: None,
+                })
+                .collect(),
             _ => Vec::new(),
         };
         let mut files = match files_data.data {
-            Data::ApiFileDirectory(files) => files.into_iter().map(|s|File { id: s.id, name: sanitise_filename(s.name), is_directory: false, children: Some(Vec::new()) }).collect(),
+            Data::ApiFileDirectory(files) => files
+                .into_iter()
+                .map(|s| File {
+                    id: s.id,
+                    name: sanitise_filename(s.name),
+                    is_directory: false,
+                    children: Some(Vec::new()),
+                })
+                .collect(),
             _ => Vec::new(),
         };
         subdirs.append(&mut files);
@@ -109,7 +141,11 @@ impl File {
     }
 
     pub fn get_download_url(&self, api: &Api) -> Result<Url> {
-        let api_data: ApiData = api.api_as_json(&format!("/files/file/{}/downloadurl", self.id), Method::GET, None)?;
+        let api_data: ApiData = api.api_as_json(
+            &format!("/files/file/{}/downloadurl", self.id),
+            Method::GET,
+            None,
+        )?;
         if let Data::Text(url) = api_data.data {
             Ok(Url::parse(&url).map_err(|_| "Unable to parse URL")?)
         } else {
@@ -124,7 +160,9 @@ impl File {
             return Ok(true);
         }
         let mut file = fs::File::create(destination).map_err(|_| "Unable to create file")?;
-        reqwest::get(download_url).and_then(|mut r| r.copy_to(&mut file)).map_err(|_|"Failed during download")?;
+        reqwest::get(download_url)
+            .and_then(|mut r| r.copy_to(&mut file))
+            .map_err(|_| "Failed during download")?;
         Ok(true)
     }
 }

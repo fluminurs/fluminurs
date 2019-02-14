@@ -1,13 +1,13 @@
 mod authorization;
 pub mod module;
 
-use authorization::Authorization;
 use crate::Result;
-use module::{Module, Announcement};
-use serde::Deserialize;
-use serde::de::DeserializeOwned;
-use std::collections::HashMap;
+use authorization::Authorization;
+use module::{Announcement, Module};
 use reqwest::Method;
+use serde::de::DeserializeOwned;
+use serde::Deserialize;
+use std::collections::HashMap;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -55,11 +55,22 @@ impl Api {
     pub fn with_login(username: &str, password: &str) -> Result<Api> {
         let mut auth = Authorization::new();
         auth.login(username, password)?;
-        Ok(Api { authorization: auth })
+        Ok(Api {
+            authorization: auth,
+        })
     }
 
-    fn api_as_json<T: DeserializeOwned>(&self, path: &str, method: Method, form: Option<&HashMap<&str, &str>>) -> Result<T> {
-        Ok(self.authorization.api(path, method, form)?.json().map_err(|_|"Unable to deserialize JSON")?)
+    fn api_as_json<T: DeserializeOwned>(
+        &self,
+        path: &str,
+        method: Method,
+        form: Option<&HashMap<&str, &str>>,
+    ) -> Result<T> {
+        Ok(self
+            .authorization
+            .api(path, method, form)?
+            .json()
+            .map_err(|_| "Unable to deserialize JSON")?)
     }
 
     pub fn name(&self) -> Result<String> {
@@ -68,7 +79,11 @@ impl Api {
     }
 
     fn current_term(&self) -> Result<String> {
-        let term: Term = self.api_as_json("/setting/AcademicWeek/current?populate=termDetail", Method::GET, None)?;
+        let term: Term = self.api_as_json(
+            "/setting/AcademicWeek/current?populate=termDetail",
+            Method::GET,
+            None,
+        )?;
         Ok(term.term_detail.term)
     }
 
@@ -77,7 +92,10 @@ impl Api {
         if let Data::Modules(modules) = api_data.data {
             if current_term_only {
                 let current_term = self.current_term()?;
-                Ok(modules.into_iter().filter(|m|m.term == current_term).collect())
+                Ok(modules
+                    .into_iter()
+                    .filter(|m| m.term == current_term)
+                    .collect())
             } else {
                 Ok(modules)
             }
@@ -87,5 +105,4 @@ impl Api {
             Err("Invalid API response from server: type mismatch")
         }
     }
-
 }

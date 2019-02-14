@@ -75,7 +75,7 @@ impl Module {
     pub fn as_file(&self, api: &Api, preload_children: bool) -> Result<File> {
         let mut file = File {
             id: self.id.to_owned(),
-            name: self.code.replace("/", "-").to_owned(),
+            name: sanitise_filename(self.code.to_owned()),
             is_directory: true,
             children: None,
         };

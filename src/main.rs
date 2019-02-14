@@ -7,8 +7,8 @@ const DESCRIPTION: &str = env!("CARGO_PKG_DESCRIPTION");
 
 mod api;
 
-use api::module::{File, Module};
-use api::Api;
+use crate::api::module::{File, Module};
+use crate::api::Api;
 use clap::{App, Arg};
 use std::collections::HashSet;
 use std::fs;

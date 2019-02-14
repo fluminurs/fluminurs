@@ -1,9 +1,9 @@
 mod authorization;
 pub mod module;
 
+use crate::api::authorization::Authorization;
+use crate::api::module::{Announcement, Module};
 use crate::Result;
-use authorization::Authorization;
-use module::{Announcement, Module};
 use reqwest::Method;
 use serde::de::DeserializeOwned;
 use serde::Deserialize;

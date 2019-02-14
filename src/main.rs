@@ -32,7 +32,7 @@ fn main() {
     println!("Your name is {}", api.name().expect("Unable to read name"));
     for module in api.modules(true).expect("Unable to retrieve modules") {
         println!("# {} {}, teaching: {}", module.code, module.name, module.is_teaching());
-        println!("");
+        println!();
         println!("## Announcements");
         for announcement in api.get_announcements(&module, false).expect("Unable to retrieve announcements") {
             println!("=== {} ===", announcement.title);

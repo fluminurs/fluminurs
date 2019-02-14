@@ -8,14 +8,14 @@ use reqwest::header::{HeaderValue, CONTENT_TYPE, COOKIE, LOCATION, SET_COOKIE};
 use url::Url;
 use serde::Deserialize;
 
-const AUTH_BASE_URL: &'static str = "https://luminus.nus.edu.sg";
-const DISCOVERY_PATH: &'static str = "/v2/auth/.well-known/openid-configuration";
-const CLIENT_ID: &'static str = "verso";
-const SCOPE: &'static str = "profile email role openid lms.read calendar.read lms.delete lms.write calendar.write gradebook.write offline_access";
-const RESPONSE_TYPE: &'static str = "id_token token code";
-const REDIRECT_URI: &'static str = "https://luminus.nus.edu.sg/auth/callback";
-const API_BASE_URL: &'static str = "https://luminus.azure-api.net";
-const OCM_APIM_SUBSCRIPTION_KEY: &'static str = "6963c200ca9440de8fa1eede730d8f7e";
+const AUTH_BASE_URL: &str = "https://luminus.nus.edu.sg";
+const DISCOVERY_PATH: &str = "/v2/auth/.well-known/openid-configuration";
+const CLIENT_ID: &str = "verso";
+const SCOPE: &str = "profile email role openid lms.read calendar.read lms.delete lms.write calendar.write gradebook.write offline_access";
+const RESPONSE_TYPE: &str = "id_token token code";
+const REDIRECT_URI: &str = "https://luminus.nus.edu.sg/auth/callback";
+const API_BASE_URL: &str = "https://luminus.azure-api.net";
+const OCM_APIM_SUBSCRIPTION_KEY: &str = "6963c200ca9440de8fa1eede730d8f7e";
 
 #[derive(Deserialize)]
 struct Discovery {
@@ -115,7 +115,7 @@ impl Authorization {
     }
 
     fn auth_http_get(&mut self, url: Url) -> Result<Response> {
-        return self.auth_http_request(Method::GET, url, None);
+        self.auth_http_request(Method::GET, url, None)
     }
 
     fn auth_http_request(&mut self, method: Method, url: Url, form: Option<&HashMap<&str, &str>>) -> Result<Response> {
@@ -142,7 +142,7 @@ impl Authorization {
         }
         let second_url = get_redirect_url(first_response)?;
         let callback_url = get_redirect_url(self.auth_http_get(second_url)?)?;
-        return self.handle_callback(callback_url);
+        self.handle_callback(callback_url)
     }
 
     pub fn renew(&mut self) -> Result<bool> {
@@ -151,7 +151,7 @@ impl Authorization {
         }
         let auth_url = auth_endpoint_uri();
         let callback_url = get_redirect_url(self.auth_http_get(auth_url)?)?;
-        return self.handle_callback(callback_url);
+        self.handle_callback(callback_url)
     }
 
     fn handle_callback(&mut self, callback_url: Url) -> Result<bool> {

@@ -13,8 +13,15 @@ use clap::{App, Arg};
 use std::collections::HashSet;
 use std::fs;
 use std::io;
-use std::io::Write;
+use std::io::{Read, Write};
 use std::path::Path;
+use serde::{Serialize, Deserialize};
+
+#[derive(Serialize, Deserialize)]
+struct Login {
+    username: String,
+    password: String,
+}
 
 fn flush_stdout() {
     io::stdout().flush().expect("Unable to flush stdout");
@@ -120,6 +127,44 @@ fn download_files(api: &Api, modules: &[Module], destination: &str) -> Result<bo
     Ok(true)
 }
 
+fn get_credentials() -> Result<(String, String)> {
+    if let Ok(mut file) = fs::File::open("login.json") {
+        let mut content = String::new();
+        file.read_to_string(&mut content).map_err(|_| "Unable to read credentials")?;
+        if let Ok(login) = serde_json::from_str::<Login>(&content) {
+            Ok((login.username, login.password))
+        } else {
+            println!("Corrupt credentials.json, deleting file...");
+            fs::remove_file(Path::new("login.json")).map_err(|_| "Unable to delete login.json")?;
+            get_credentials()
+        }
+    } else {
+        let username = get_input("Username: ");
+        let password = get_password("Password: ");
+        Ok((username, password))
+    }
+}
+
+fn store_credentials(username: &str, password: &str) -> Result<bool> {
+   if confirm("Store credentials (WARNING: they are stored in plain text)? [y/n]") {
+       let login = Login { username: username.to_owned(), password: password.to_owned() };
+       let serialised = serde_json::to_string(&login).map_err(|_|"Unable to serialise credentials")?;
+       fs::write("login.json", serialised).map_err(|_| "Unable to write to credentials file")?;
+   }
+   Ok(true)
+}
+
+fn confirm(prompt: &str) -> bool {
+    print!("{}", prompt);
+    flush_stdout();
+    let mut answer = String::new();
+    while answer != "y" && answer != "n" {
+        answer = get_input("");
+        answer.make_ascii_lowercase();
+    }
+    answer == "y"
+}
+
 fn main() {
     let matches = App::new(PKG_NAME)
         .version(VERSION)
@@ -133,9 +178,11 @@ fn main() {
                 .takes_value(true),
         )
         .get_matches();
-    let username = get_input("Username: ");
-    let password = get_password("Password: ");
+    let (username, password) = get_credentials().expect("Unable to get credentials");
     let api = Api::with_login(&username, &password).expect("Unable to login");
+    if !Path::new("login.json").exists() {
+        store_credentials(&username, &password).expect("Unable to store credentials");
+    }
     println!("Hi {}!", api.name().expect("Unable to read name"));
     let modules = api.modules(true).expect("Unable to retrieve modules");
     println!("You are taking:");

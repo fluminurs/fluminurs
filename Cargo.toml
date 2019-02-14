@@ -4,6 +4,9 @@ version = "0.1.1"
 description = "A client in Rust to access the reverse-engineered LumiNUS API"
 authors = ["Julius Putra Tanu Setiaji <indocomsoft@gmail.com>"]
 edition = "2018"
+repository = "http://github.com/indocomsoft/fluminurs"
+readme = "README.md"
+license = "MIT"
 
 [profile.release]
 lto = true

@@ -127,8 +127,8 @@ fn download_files(api: &Api, modules: &[Module], destination: &str) -> Result<bo
     Ok(true)
 }
 
-fn get_credentials() -> Result<(String, String)> {
-    if let Ok(mut file) = fs::File::open("login.json") {
+fn get_credentials(credential_file: &str) -> Result<(String, String)> {
+    if let Ok(mut file) = fs::File::open(credential_file) {
         let mut content = String::new();
         file.read_to_string(&mut content)
             .map_err(|_| "Unable to read credentials")?;
@@ -136,8 +136,9 @@ fn get_credentials() -> Result<(String, String)> {
             Ok((login.username, login.password))
         } else {
             println!("Corrupt credentials.json, deleting file...");
-            fs::remove_file(Path::new("login.json")).map_err(|_| "Unable to delete login.json")?;
-            get_credentials()
+            fs::remove_file(Path::new(credential_file))
+                .map_err(|_| "Unable to delete credential file")?;
+            get_credentials(credential_file)
         }
     } else {
         let username = get_input("Username: ");
@@ -146,7 +147,7 @@ fn get_credentials() -> Result<(String, String)> {
     }
 }
 
-fn store_credentials(username: &str, password: &str) -> Result<bool> {
+fn store_credentials(credential_file: &str, username: &str, password: &str) -> Result<bool> {
     if confirm("Store credentials (WARNING: they are stored in plain text)? [y/n]") {
         let login = Login {
             username: username.to_owned(),
@@ -154,7 +155,8 @@ fn store_credentials(username: &str, password: &str) -> Result<bool> {
         };
         let serialised =
             serde_json::to_string(&login).map_err(|_| "Unable to serialise credentials")?;
-        fs::write("login.json", serialised).map_err(|_| "Unable to write to credentials file")?;
+        fs::write(credential_file, serialised)
+            .map_err(|_| "Unable to write to credentials file")?;
     }
     Ok(true)
 }
@@ -182,11 +184,18 @@ fn main() {
                 .long("download-to")
                 .takes_value(true),
         )
+        .arg(
+            Arg::with_name("credential-file")
+                .long("credential-file")
+                .takes_value(true),
+        )
         .get_matches();
-    let (username, password) = get_credentials().expect("Unable to get credentials");
+    let credential_file = matches.value_of("credential-file").unwrap_or("login.json");
+    let (username, password) = get_credentials(credential_file).expect("Unable to get credentials");
     let api = Api::with_login(&username, &password).expect("Unable to login");
-    if !Path::new("login.json").exists() {
-        store_credentials(&username, &password).expect("Unable to store credentials");
+    if !Path::new(credential_file).exists() {
+        store_credentials(&credential_file, &username, &password)
+            .expect("Unable to store credentials");
     }
     println!("Hi {}!", api.name().expect("Unable to read name"));
     let modules = api.modules(true).expect("Unable to retrieve modules");

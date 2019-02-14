@@ -22,6 +22,12 @@ struct Access {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct Announcement {
+    pub title: String,
+    pub description: String
+}
+
+#[derive(Debug, Deserialize)]
 pub struct Module {
     pub id: String,
     #[serde(rename = "name")]
@@ -30,12 +36,6 @@ pub struct Module {
     pub name: String,
     access: Access,
     pub term: String,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct Announcement {
-    pub title: String,
-    pub description: String
 }
 
 impl Module {
@@ -54,5 +54,50 @@ impl Module {
         } else {
             Err("Invalid API response from server: type mismatch")
         }
+    }
+
+    pub fn as_file(&self, api: &Api, preload_children: bool) -> Result<File> {
+        let mut file = File { id: self.id.to_owned(), name: self.code.to_owned(), is_directory: true, children: None };
+        if preload_children {
+            file.load_children(api)?;
+        }
+        Ok(file)
+    }
+}
+
+#[derive(Clone)]
+pub struct File {
+    id: String,
+    pub name: String,
+    pub is_directory: bool,
+    pub children: Option<Vec<File>>,
+}
+
+fn sanitise_filename(name: String) -> String {
+    ["\0", "/"].iter().fold(name, |acc, x| acc.replace(x, "-"))
+}
+
+impl File {
+    pub fn load_children(&mut self, api: &Api) -> Result<bool> {
+        if !self.is_directory {
+            self.children = Some(Vec::new());
+            return Ok(true);
+        }
+        if self.children.is_some() {
+            return Ok(true);
+        }
+        let subdirs_data: ApiData = api.api_as_json(&format!("/files/?ParentID={}", self.id), Method::GET, None)?;
+        let files_data: ApiData = api.api_as_json(&format!("/files/{}/file", self.id), Method::GET, None)?;
+        let mut subdirs = match subdirs_data.data {
+            Data::ApiFileDirectory(subdirs) => subdirs.into_iter().map(|s|File { id: s.id, name: sanitise_filename(s.name), is_directory: true, children: None }).collect(),
+            _ => Vec::new(),
+        };
+        let mut files = match files_data.data {
+            Data::ApiFileDirectory(files) => files.into_iter().map(|s|File { id: s.id, name: sanitise_filename(s.name), is_directory: false, children: Some(Vec::new()) }).collect(),
+            _ => Vec::new(),
+        };
+        subdirs.append(&mut files);
+        self.children = Some(subdirs);
+        Ok(true)
     }
 }

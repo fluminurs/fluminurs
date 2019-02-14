@@ -1,5 +1,5 @@
 mod authorization;
-mod module;
+pub mod module;
 
 use authorization::Authorization;
 use crate::Result;
@@ -28,6 +28,12 @@ struct TermDetail {
 }
 
 #[derive(Debug, Deserialize)]
+struct ApiFileDirectory {
+    id: String,
+    name: String,
+}
+
+#[derive(Debug, Deserialize)]
 struct ApiData {
     data: Data,
 }
@@ -38,6 +44,7 @@ enum Data {
     Empty(Vec<[(); 0]>),
     Modules(Vec<Module>),
     Announcements(Vec<Announcement>),
+    ApiFileDirectory(Vec<ApiFileDirectory>),
 }
 
 pub struct Api {

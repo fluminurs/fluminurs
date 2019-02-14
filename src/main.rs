@@ -3,6 +3,7 @@ type Result<T> = std::result::Result<T, &'static str>;
 mod api;
 
 use api::Api;
+use api::module::File;
 use std::collections::HashSet;
 use std::io;
 use std::io::Write;
@@ -25,6 +26,18 @@ fn get_password(prompt: &str) -> String {
     rpassword::read_password().expect("Unable to get non-echo input mode for password")
 }
 
+fn print_files(file: &File, api: &Api, prefix: &str) -> Result<bool> {
+    if file.is_directory {
+        for mut child in file.children.clone().ok_or("children must be preloaded")?.into_iter() {
+            child.load_children(api)?;
+            print_files(&child, api, &format!("{}/{}", prefix, file.name))?;
+        }
+    } else {
+        println!("{}/{}", prefix, file.name);
+    }
+    Ok(true)
+}
+
 fn main() {
     let username = get_input("Username: ");
     let password = get_password("Password: ");
@@ -40,5 +53,6 @@ fn main() {
             let decoded = htmlescape::decode_html(&stripped).expect("Unable to decode HTML Entities");
             println!("{}", decoded);
         }
+        print_files(&module.as_file(&api, true).expect("Unable to retrieve files"), &api, "").expect("Unable to print files");
     }
 }

@@ -34,7 +34,7 @@ fn main() {
         println!("# {} {}, teaching: {}", module.code, module.name, module.is_teaching());
         println!();
         println!("## Announcements");
-        for announcement in api.get_announcements(&module, false).expect("Unable to retrieve announcements") {
+        for announcement in module.get_announcements(&api, false).expect("Unable to retrieve announcements") {
             println!("=== {} ===", announcement.title);
             let stripped = ammonia::Builder::new().tags(HashSet::new()).clean(&announcement.description).to_string();
             let decoded = htmlescape::decode_html(&stripped).expect("Unable to decode HTML Entities");

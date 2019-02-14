@@ -3,11 +3,11 @@ mod module;
 
 use authorization::Authorization;
 use crate::Result;
-use module::Module;
+use module::{Module, Announcement};
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
 use std::collections::HashMap;
-use reqwest::{Method};
+use reqwest::Method;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -27,27 +27,17 @@ struct TermDetail {
     description: String,
 }
 
-#[derive(Deserialize)]
-#[derive(Debug)]
+#[derive(Debug, Deserialize)]
 struct ApiData {
     data: Data,
 }
 
-#[derive(Debug)]
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 #[serde(untagged)]
 enum Data {
-    Empty(Vec<String>),
+    Empty(Vec<[(); 0]>),
     Modules(Vec<Module>),
     Announcements(Vec<Announcement>),
-}
-
-#[derive(Debug)]
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Announcement {
-    pub title: String,
-    pub description: String
 }
 
 pub struct Api {
@@ -91,15 +81,4 @@ impl Api {
         }
     }
 
-    pub fn get_announcements(&self, module: &Module, archived: bool) -> Result<Vec<Announcement>> {
-        let path = format!("/announcement/{}/{}?sortby=displayFrom%20ASC", if archived { "Archived" } else { "NonArchived" }, module.id);
-        let api_data: ApiData = self.api_as_json(&path, Method::GET, None)?;
-        if let Data::Announcements(announcements) = api_data.data {
-            Ok(announcements)
-        } else if let Data::Empty(_) = api_data.data {
-            Ok(Vec::new())
-        } else {
-            Err("Invalid API response from server: type mismatch")
-        }
-    }
 }

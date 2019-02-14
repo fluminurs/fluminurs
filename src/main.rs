@@ -10,12 +10,12 @@ mod api;
 use crate::api::module::{File, Module};
 use crate::api::Api;
 use clap::{App, Arg};
+use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fs;
 use std::io;
 use std::io::{Read, Write};
 use std::path::Path;
-use serde::{Serialize, Deserialize};
 
 #[derive(Serialize, Deserialize)]
 struct Login {
@@ -130,7 +130,8 @@ fn download_files(api: &Api, modules: &[Module], destination: &str) -> Result<bo
 fn get_credentials() -> Result<(String, String)> {
     if let Ok(mut file) = fs::File::open("login.json") {
         let mut content = String::new();
-        file.read_to_string(&mut content).map_err(|_| "Unable to read credentials")?;
+        file.read_to_string(&mut content)
+            .map_err(|_| "Unable to read credentials")?;
         if let Ok(login) = serde_json::from_str::<Login>(&content) {
             Ok((login.username, login.password))
         } else {
@@ -146,12 +147,16 @@ fn get_credentials() -> Result<(String, String)> {
 }
 
 fn store_credentials(username: &str, password: &str) -> Result<bool> {
-   if confirm("Store credentials (WARNING: they are stored in plain text)? [y/n]") {
-       let login = Login { username: username.to_owned(), password: password.to_owned() };
-       let serialised = serde_json::to_string(&login).map_err(|_|"Unable to serialise credentials")?;
-       fs::write("login.json", serialised).map_err(|_| "Unable to write to credentials file")?;
-   }
-   Ok(true)
+    if confirm("Store credentials (WARNING: they are stored in plain text)? [y/n]") {
+        let login = Login {
+            username: username.to_owned(),
+            password: password.to_owned(),
+        };
+        let serialised =
+            serde_json::to_string(&login).map_err(|_| "Unable to serialise credentials")?;
+        fs::write("login.json", serialised).map_err(|_| "Unable to write to credentials file")?;
+    }
+    Ok(true)
 }
 
 fn confirm(prompt: &str) -> bool {

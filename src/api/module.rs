@@ -1,7 +1,8 @@
 use crate::api::{Api, ApiData, Data};
 use crate::Result;
-use serde::Deserialize;
 use reqwest::Method;
+use serde::Deserialize;
+use url::Url;
 
 #[derive(Debug, Deserialize)]
 struct Access {
@@ -99,5 +100,14 @@ impl File {
         subdirs.append(&mut files);
         self.children = Some(subdirs);
         Ok(true)
+    }
+
+    pub fn get_download_url(&self, api: &Api) -> Result<Url> {
+        let api_data: ApiData = api.api_as_json(&format!("/files/file/{}/downloadurl", self.id), Method::GET, None)?;
+        if let Data::Text(url) = api_data.data {
+            Ok(Url::parse(&url).map_err(|_| "Unable to parse URL")?)
+        } else {
+            Err("Invalid API response from server: type mismatch")
+        }
     }
 }

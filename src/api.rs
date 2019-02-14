@@ -45,6 +45,7 @@ enum Data {
     Modules(Vec<Module>),
     Announcements(Vec<Announcement>),
     ApiFileDirectory(Vec<ApiFileDirectory>),
+    Text(String),
 }
 
 pub struct Api {

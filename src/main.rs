@@ -1,8 +1,16 @@
 mod authorization;
 
 use authorization::Authorization;
+use reqwest::Method;
+use serde::Deserialize;
 use std::io;
 use std::io::Write;
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct Name {
+    user_name_original: String,
+}
 
 fn main() {
     let mut username = String::new();
@@ -16,11 +24,8 @@ fn main() {
     let mut auth = Authorization::new();
     match auth.login(&username, &password) {
         Ok(_) => {
-            println!("JWT: {}", auth.jwt.clone().unwrap());
-            match auth.renew() {
-                Ok(_) => println!("Renewed: {}", auth.jwt.unwrap()),
-                Err(error) => println!("{}", error),
-            };
+            let name: Name = auth.api("/user/Profile", Method::GET, None).unwrap().json().unwrap();
+            println!("Your name is {}", name.user_name_original);
         }
         Err(error) => println!("{}", error),
     };

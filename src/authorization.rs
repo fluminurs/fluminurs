@@ -2,7 +2,7 @@ use select::document::Document;
 use select::predicate::Attr;
 use std::collections::HashMap;
 use reqwest::{Client, Method, RedirectPolicy, RequestBuilder, Response};
-use reqwest::header::{HeaderValue, COOKIE, LOCATION, SET_COOKIE};
+use reqwest::header::{HeaderValue, CONTENT_TYPE, COOKIE, LOCATION, SET_COOKIE};
 use url::Url;
 use serde::Deserialize;
 
@@ -52,7 +52,11 @@ fn full_auth_url(path: &str) -> Url {
     Url::parse(AUTH_BASE_URL).and_then(|u| u.join(path)).expect("Unable to join URL's")
 }
 
-pub fn auth_endpoint_uri() -> Url {
+fn full_api_url(path: &str) -> Url {
+    Url::parse(API_BASE_URL).and_then(|u| u.join(path)).expect("Unable to join URL's")
+}
+
+fn auth_endpoint_uri() -> Url {
     let discovery_url = full_auth_url(DISCOVERY_PATH);
     let discovery: Discovery = reqwest::get(discovery_url).expect("Failed to HTTP GET the discovery path").json().expect("Unable to deserialize discovery json");
     let mut auth_url = Url::parse(&discovery.authorization_endpoint).expect("Unable to parse discovery url");
@@ -87,6 +91,21 @@ fn get_redirect_url(response: Response) -> Result<Url, &'static str> {
 impl Authorization {
     pub fn new() -> Authorization {
         Authorization { jwt: None, cookies: HashMap::new() }
+    }
+
+    pub fn api(&self, path: &str, method: Method, form: Option<&HashMap<&str, &str>>) -> Result<Response, &'static str> {
+        let client = reqwest::Client::new();
+        let url = full_api_url(path);
+        let token = self.jwt.clone().ok_or("Please login first")?;
+        let mut request_builder = client.request(method, url)
+            .header("Ocp-Apim-Subscription-Key", OCM_APIM_SUBSCRIPTION_KEY)
+            .header(CONTENT_TYPE, "application/json")
+            .bearer_auth(token);
+        if let Some(form) = form {
+            request_builder = request_builder.form(form);
+        }
+        let response = request_builder.send().map_err(|_| "Failed API request")?;
+        Ok(response)
     }
 
     fn auth_http_post(&mut self, url: Url, query: &HashMap<&str, &str>) -> Result<Response, &'static str> {

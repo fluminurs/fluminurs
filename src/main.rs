@@ -107,8 +107,10 @@ fn download_file(api: &Api, file: &File, path: &Path) -> Result<bool> {
             download_file(api, &child, &destination)?;
         }
     } else {
-        file.download(api, path)?;
-        println!("Downloaded to {}", destination.to_string_lossy());
+        let result = file.download(api, path)?;
+        if result {
+            println!("Downloaded to {}", destination.to_string_lossy());
+        }
     }
     Ok(true)
 }

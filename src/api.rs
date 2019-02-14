@@ -28,14 +28,26 @@ struct TermDetail {
 }
 
 #[derive(Deserialize)]
+#[derive(Debug)]
 struct ApiData {
     data: Data,
 }
 
+#[derive(Debug)]
 #[derive(Deserialize)]
 #[serde(untagged)]
 enum Data {
+    Empty(Vec<String>),
     Modules(Vec<Module>),
+    Announcements(Vec<Announcement>),
+}
+
+#[derive(Debug)]
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Announcement {
+    pub title: String,
+    pub description: String
 }
 
 pub struct Api {
@@ -65,12 +77,29 @@ impl Api {
 
     pub fn modules(&self, current_term_only: bool) -> Result<Vec<Module>> {
         let api_data: ApiData = self.api_as_json("/module", Method::GET, None)?;
-        let Data::Modules(modules) = api_data.data;
-        if current_term_only {
-            let current_term = self.current_term()?;
-            return Ok(modules.into_iter().filter(|m|m.term == current_term).collect())
+        if let Data::Modules(modules) = api_data.data {
+            if current_term_only {
+                let current_term = self.current_term()?;
+                Ok(modules.into_iter().filter(|m|m.term == current_term).collect())
+            } else {
+                Ok(modules)
+            }
+        } else if let Data::Empty(_) = api_data.data {
+            Ok(Vec::new())
         } else {
-            Ok(modules)
+            Err("Invalid API response from server: type mismatch")
+        }
+    }
+
+    pub fn get_announcements(&self, module: &Module, archived: bool) -> Result<Vec<Announcement>> {
+        let path = format!("/announcement/{}/{}?sortby=displayFrom%20ASC", if archived { "Archived" } else { "NonArchived" }, module.id);
+        let api_data: ApiData = self.api_as_json(&path, Method::GET, None)?;
+        if let Data::Announcements(announcements) = api_data.data {
+            Ok(announcements)
+        } else if let Data::Empty(_) = api_data.data {
+            Ok(Vec::new())
+        } else {
+            Err("Invalid API response from server: type mismatch")
         }
     }
 }

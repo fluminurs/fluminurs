@@ -3,6 +3,7 @@ type Result<T> = std::result::Result<T, &'static str>;
 mod api;
 
 use api::Api;
+use std::collections::HashSet;
 use std::io;
 use std::io::Write;
 
@@ -30,6 +31,14 @@ fn main() {
     let api = Api::with_login(&username, &password).expect("Unable to login");
     println!("Your name is {}", api.name().expect("Unable to read name"));
     for module in api.modules(true).expect("Unable to retrieve modules") {
-        println!("- {} {}, teaching: {}", module.code, module.name, module.is_teaching());
+        println!("# {} {}, teaching: {}", module.code, module.name, module.is_teaching());
+        println!("");
+        println!("## Announcements");
+        for announcement in api.get_announcements(&module, false).expect("Unable to retrieve announcements") {
+            println!("=== {} ===", announcement.title);
+            let stripped = ammonia::Builder::new().tags(HashSet::new()).clean(&announcement.description).to_string();
+            let decoded = htmlescape::decode_html(&stripped).expect("Unable to decode HTML Entities");
+            println!("{}", decoded);
+        }
     }
 }

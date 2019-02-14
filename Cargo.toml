@@ -5,6 +5,7 @@ authors = ["Julius Putra Tanu Setiaji <indocomsoft@gmail.com>"]
 edition = "2018"
 
 [dependencies]
+ammonia = "2.0.0"
 cookie = "0.11.0"
 htmlescape = "0.3.1"
 rand = "0.6.5"

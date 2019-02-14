@@ -1,5 +1,6 @@
 use serde::Deserialize;
 
+#[derive(Debug)]
 #[derive(Deserialize)]
 struct Access {
     #[serde(rename = "access_Full")]
@@ -18,9 +19,10 @@ struct Access {
     settings_update: bool,
 }
 
+#[derive(Debug)]
 #[derive(Deserialize)]
 pub struct Module {
-    id: String,
+    pub id: String,
     #[serde(rename = "name")]
     pub code: String,
     #[serde(rename = "courseName")]
@@ -28,6 +30,7 @@ pub struct Module {
     access: Access,
     pub term: String,
 }
+
 
 impl Module {
     pub fn is_teaching(&self) -> bool {

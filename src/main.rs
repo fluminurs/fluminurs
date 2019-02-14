@@ -1,32 +1,35 @@
-mod authorization;
+type Result<T> = std::result::Result<T, &'static str>;
 
-use authorization::Authorization;
-use reqwest::Method;
-use serde::Deserialize;
+mod api;
+
+use api::Api;
 use std::io;
 use std::io::Write;
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct Name {
-    user_name_original: String,
+fn flush_stdout() {
+    io::stdout().flush().expect("Unable to flush stdout");
+}
+
+fn get_input(prompt: &str) -> String {
+    let mut input = String::new();
+    print!("{}", prompt);
+    flush_stdout();
+    io::stdin().read_line(&mut input).expect("Unable to get input");
+    input.trim().to_string()
+}
+
+fn get_password(prompt: &str) -> String {
+    print!("{}", prompt);
+    flush_stdout();
+    rpassword::read_password().expect("Unable to get non-echo input mode for password")
 }
 
 fn main() {
-    let mut username = String::new();
-    print!("Username: ");
-    io::stdout().flush().unwrap();
-    io::stdin().read_line(&mut username).expect("Unable to get input");
-    username = username.trim().to_string();
-    print!("Password: ");
-    io::stdout().flush().unwrap();
-    let password = rpassword::read_password().expect("Unable to get non-echo input mode for password");
-    let mut auth = Authorization::new();
-    match auth.login(&username, &password) {
-        Ok(_) => {
-            let name: Name = auth.api("/user/Profile", Method::GET, None).unwrap().json().unwrap();
-            println!("Your name is {}", name.user_name_original);
-        }
-        Err(error) => println!("{}", error),
-    };
+    let username = get_input("Username: ");
+    let password = get_password("Password: ");
+    let api = Api::with_login(&username, &password).expect("Unable to login");
+    println!("Your name is {}", api.name().expect("Unable to read name"));
+    for module in api.modules(true).expect("Unable to retrieve modules") {
+        println!("- {} {}, teaching: {}", module.code, module.name, module.is_teaching());
+    }
 }

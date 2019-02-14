@@ -1,3 +1,5 @@
+use crate::Result;
+
 use select::document::Document;
 use select::predicate::Attr;
 use std::collections::HashMap;
@@ -74,14 +76,14 @@ fn add_auth_params(auth_url: &mut Url) {
         .append_pair("redirect_uri", REDIRECT_URI);
 }
 
-fn build_client() -> Result<Client, &'static str> {
+fn build_client() -> Result<Client> {
     Client::builder().redirect(RedirectPolicy::none()).build().map_err(|_|"Unable to create HTTP client")
 }
 
 pub fn generate_random_bytes(size: usize) -> String {
     (0..size).map(|_| format!("{:02x}", rand::random::<u8>())).collect()
 }
-fn get_redirect_url(response: Response) -> Result<Url, &'static str> {
+fn get_redirect_url(response: Response) -> Result<Url> {
     let location = response.headers().get(LOCATION).ok_or("Invalid response from server, expected redirection")?
         .to_str().map_err(|_| "Unable to read location header")?.to_string();
     let url = Url::parse(&location).map_err(|_| " Unable to parse the url of location")?;
@@ -93,7 +95,7 @@ impl Authorization {
         Authorization { jwt: None, cookies: HashMap::new() }
     }
 
-    pub fn api(&self, path: &str, method: Method, form: Option<&HashMap<&str, &str>>) -> Result<Response, &'static str> {
+    pub fn api(&self, path: &str, method: Method, form: Option<&HashMap<&str, &str>>) -> Result<Response> {
         let client = reqwest::Client::new();
         let url = full_api_url(path);
         let token = self.jwt.clone().ok_or("Please login first")?;
@@ -108,15 +110,15 @@ impl Authorization {
         Ok(response)
     }
 
-    fn auth_http_post(&mut self, url: Url, query: &HashMap<&str, &str>) -> Result<Response, &'static str> {
-        return self.auth_http_request(Method::POST, url, Some(query));
+    fn auth_http_post(&mut self, url: Url, query: &HashMap<&str, &str>) -> Result<Response> {
+        self.auth_http_request(Method::POST, url, Some(query))
     }
 
-    fn auth_http_get(&mut self, url: Url) -> Result<Response, &'static str> {
+    fn auth_http_get(&mut self, url: Url) -> Result<Response> {
         return self.auth_http_request(Method::GET, url, None);
     }
 
-    fn auth_http_request(&mut self, method: Method, url: Url, form: Option<&HashMap<&str, &str>>) -> Result<Response, &'static str> {
+    fn auth_http_request(&mut self, method: Method, url: Url, form: Option<&HashMap<&str, &str>>) -> Result<Response> {
         let client = build_client()?;
         let mut request_builder = self.add_cookie_header(client.request(method, url));
         if let Some(form) = form {
@@ -130,7 +132,7 @@ impl Authorization {
         Ok(response)
     }
 
-    pub fn login(&mut self, username: &str, password: &str) -> Result<bool, &'static str> {
+    pub fn login(&mut self, username: &str, password: &str) -> Result<bool> {
         let login_info = self.auth_login_info()?;
         let url = full_auth_url(&login_info.login_url);
         let params = login_info.anti_forgery.build_login_params(username, password);
@@ -143,7 +145,7 @@ impl Authorization {
         return self.handle_callback(callback_url);
     }
 
-    pub fn renew(&mut self) -> Result<bool, &'static str> {
+    pub fn renew(&mut self) -> Result<bool> {
         if self.jwt.is_none() {
             return Err("Please login first.")
         }
@@ -152,7 +154,7 @@ impl Authorization {
         return self.handle_callback(callback_url);
     }
 
-    fn handle_callback(&mut self, callback_url: Url) -> Result<bool, &'static str> {
+    fn handle_callback(&mut self, callback_url: Url) -> Result<bool> {
         let fragment = callback_url.fragment().ok_or("Invalid callback")?;
         let response: HashMap<String, String> = serde_urlencoded::from_str(&fragment).map_err(|_| "Invalid callback")?;
         self.jwt = Some(response["id_token"].to_owned());
@@ -163,7 +165,7 @@ impl Authorization {
     }
 
 
-    fn auth_login_info(&mut self) -> Result<LoginInfo, &'static str> {
+    fn auth_login_info(&mut self) -> Result<LoginInfo> {
         let auth_url = auth_endpoint_uri();
         let second_url = get_redirect_url(self.auth_http_get(auth_url)?)?;
         let second_body = self.auth_http_get(second_url)?.text().map_err(|_| "Unable to read HTTP response body")?;

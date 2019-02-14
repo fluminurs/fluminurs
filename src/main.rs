@@ -17,7 +17,13 @@ fn main() {
     password = password.trim().to_string();
     let mut auth = Authorization::new();
     match auth.login(&username, &password) {
-        Ok(_) => println!("{}", auth.jwt.unwrap()),
+        Ok(_) => {
+            println!("JWT: {}", auth.jwt.clone().unwrap());
+            match auth.renew() {
+                Ok(_) => println!("Renewed: {}", auth.jwt.unwrap()),
+                Err(error) => println!("{}", error),
+            };
+        }
         Err(error) => println!("{}", error),
     };
 }

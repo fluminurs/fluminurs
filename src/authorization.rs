@@ -87,12 +87,10 @@ impl Authorization {
     pub fn new() -> Authorization {
         Authorization { jwt: None, cookies: HashMap::new() }
     }
+
     fn http_post<T: Serialize + ?Sized>(&mut self, url: Url, query: &T) -> Result<Response, &'static str> {
         let client = build_client()?;
-        let body = serde_urlencoded::to_string(query).map_err(|_| "Unable to encode form")?;
-        let len = body.len();
-        let request_builder = self.add_cookie_header(client.post(url)).body(body).header(CONTENT_LENGTH, len).header(CONTENT_TYPE, "application/x-www-form-urlencoded");
-        let response = request_builder.send().map_err(|_|"Failed HTTP request")?;
+        let response = self.add_cookie_header(client.post(url)).form(query).send().map_err(|_|"Failed HTTP request")?;
         for c in response.headers().get_all(SET_COOKIE).iter() {
             let cookie = c.to_str().map_err(|_| "Unable to read set-cookie header")?.to_string();
             self.add_cookie(cookie);
@@ -112,7 +110,6 @@ impl Authorization {
 
     pub fn login(&mut self, username: &str, password: &str) -> Result<bool, &'static str> {
         let login_info = self.auth_login_info()?;
-        let client = build_client()?;
         let url = full_auth_url(&login_info.login_url);
         let params = login_info.anti_forgery.build_login_params(username, password);
         let first_response = self.http_post(url, &params)?;
@@ -121,6 +118,16 @@ impl Authorization {
         }
         let second_url = get_redirect_url(first_response)?;
         let callback_url = get_redirect_url(self.http_get(second_url)?)?;
+        return self.handle_callback(callback_url);
+    }
+
+    pub fn renew(&mut self) -> Result<bool, &'static str> {
+        if self.jwt.is_none() {
+            return Err("Please login first.")
+        }
+        let auth_url = auth_endpoint_uri();
+        let callback_url = get_redirect_url(self.http_get(auth_url)?)?;
+        println!("{}", &callback_url);
         return self.handle_callback(callback_url);
     }
 
@@ -135,7 +142,7 @@ impl Authorization {
     }
 
 
-    pub fn auth_login_info(&mut self) -> Result<LoginInfo, &'static str> {
+    fn auth_login_info(&mut self) -> Result<LoginInfo, &'static str> {
         let auth_url = auth_endpoint_uri();
         let second_url = get_redirect_url(self.http_get(auth_url)?)?;
         let second_body = self.http_get(second_url)?.text().map_err(|_| "Unable to read HTTP response body")?;

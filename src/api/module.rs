@@ -96,7 +96,14 @@ pub struct File {
 
 fn sanitise_filename(name: String) -> String {
     if cfg!(windows) {
-        sanitize_filename::sanitize_with_options(name, sanitize_filename::Options { windows: true, truncate: true, replacement: "-" })
+        sanitize_filename::sanitize_with_options(
+            name,
+            sanitize_filename::Options {
+                windows: true,
+                truncate: true,
+                replacement: "-",
+            },
+        )
     } else {
         ["\0", "/"].iter().fold(name, |acc, x| acc.replace(x, "-"))
     }

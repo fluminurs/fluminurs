@@ -165,11 +165,11 @@ impl File {
     }
 
     pub fn download(&self, api: &Api, path: &Path) -> Result<bool> {
-        let download_url = self.get_download_url(api)?;
         let destination = path.join(self.name.to_owned());
         if destination.exists() {
             return Ok(false);
         }
+        let download_url = self.get_download_url(api)?;
         let mut file = fs::File::create(destination).map_err(|_| "Unable to create file")?;
         reqwest::get(download_url)
             .and_then(|mut r| r.copy_to(&mut file))

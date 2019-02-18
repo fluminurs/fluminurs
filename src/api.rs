@@ -4,7 +4,7 @@ pub mod module;
 use crate::api::authorization::Authorization;
 use crate::api::module::{Announcement, Module};
 use crate::Result;
-use reqwest::Method;
+use reqwest::{Client, Method};
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -32,8 +32,7 @@ struct ApiFileDirectory {
     name: String,
 }
 
-#[derive(Debug, Deserialize)]
-struct ApiData {
+#[derive(Debug, Deserialize)] struct ApiData {
     data: Data,
 }
 
@@ -53,7 +52,7 @@ pub struct Api {
 
 impl Api {
     pub fn with_login(username: &str, password: &str) -> Result<Api> {
-        let mut auth = Authorization::new();
+        let mut auth = Authorization::new()?;
         auth.login(username, password)?;
         Ok(Api {
             authorization: auth,
@@ -104,5 +103,9 @@ impl Api {
         } else {
             Err("Invalid API response from server: type mismatch")
         }
+    }
+
+    pub fn get_client(&self) -> &Client {
+        &self.authorization.client
     }
 }

@@ -171,7 +171,8 @@ impl File {
         }
         let download_url = self.get_download_url(api)?;
         let mut file = fs::File::create(destination).map_err(|_| "Unable to create file")?;
-        reqwest::get(download_url)
+        api.get_client().get(download_url)
+            .send()
             .and_then(|mut r| r.copy_to(&mut file))
             .map_err(|_| "Failed during download")?;
         Ok(true)

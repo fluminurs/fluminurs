@@ -52,6 +52,7 @@ struct LoginInfo {
 pub struct Authorization {
     pub jwt: Option<String>,
     cookies: HashMap<String, String>,
+    pub client: Client,
 }
 
 fn full_auth_url(path: &str) -> Url {
@@ -66,17 +67,6 @@ fn full_api_url(path: &str) -> Url {
         .expect("Unable to join URL's")
 }
 
-fn auth_endpoint_uri() -> Url {
-    let discovery_url = full_auth_url(DISCOVERY_PATH);
-    let discovery: Discovery = reqwest::get(discovery_url)
-        .expect("Failed to HTTP GET the discovery path")
-        .json()
-        .expect("Unable to deserialize discovery json");
-    let mut auth_url =
-        Url::parse(&discovery.authorization_endpoint).expect("Unable to parse discovery url");
-    add_auth_params(&mut auth_url);
-    auth_url
-}
 
 fn add_auth_params(auth_url: &mut Url) {
     auth_url
@@ -114,11 +104,12 @@ fn get_redirect_url(response: Response) -> Result<Url> {
 }
 
 impl Authorization {
-    pub fn new() -> Authorization {
-        Authorization {
+    pub fn new() -> Result<Authorization> {
+        Ok(Authorization {
             jwt: None,
             cookies: HashMap::new(),
-        }
+            client: build_client()?,
+        })
     }
 
     pub fn api(
@@ -127,10 +118,10 @@ impl Authorization {
         method: Method,
         form: Option<&HashMap<&str, &str>>,
     ) -> Result<Response> {
-        let client = reqwest::Client::new();
         let url = full_api_url(path);
         let token = self.jwt.clone().ok_or("Please login first")?;
-        let mut request_builder = client
+        let mut request_builder = self
+            .client
             .request(method, url)
             .header("Ocp-Apim-Subscription-Key", OCM_APIM_SUBSCRIPTION_KEY)
             .header(CONTENT_TYPE, "application/json")
@@ -156,8 +147,7 @@ impl Authorization {
         url: Url,
         form: Option<&HashMap<&str, &str>>,
     ) -> Result<Response> {
-        let client = build_client()?;
-        let mut request_builder = self.add_cookie_header(client.request(method, url));
+        let mut request_builder = self.add_cookie_header(self.client.request(method, url));
         if let Some(form) = form {
             request_builder = request_builder.form(form);
         }
@@ -208,7 +198,7 @@ impl Authorization {
     }
 
     fn auth_login_info(&mut self) -> Result<LoginInfo> {
-        let auth_url = auth_endpoint_uri();
+        let auth_url = self.auth_endpoint_uri()?;
         let second_url = get_redirect_url(self.auth_http_get(auth_url)?)?;
         let second_body = self
             .auth_http_get(second_url)?
@@ -245,5 +235,18 @@ impl Authorization {
         let cookie_value = HeaderValue::from_str(&self.generate_cookie_header())
             .expect("Unable to add cookie header");
         request_builder.header(COOKIE, cookie_value)
+    }
+
+    fn auth_endpoint_uri(&self) -> Result<Url> {
+        let discovery_url = full_auth_url(DISCOVERY_PATH);
+        let discovery: Discovery = self.client.get(discovery_url)
+            .send()
+            .map_err(|_| "Failed to HTTP GET the discovery path")?
+            .json()
+            .map_err(|_| "Unable to deserialize discovery json")?;
+        let mut auth_url =
+            Url::parse(&discovery.authorization_endpoint).map_err(|_| "Unable to parse discovery url")?;
+        add_auth_params(&mut auth_url);
+        Ok(auth_url)
     }
 }

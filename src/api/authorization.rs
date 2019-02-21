@@ -67,7 +67,6 @@ fn full_api_url(path: &str) -> Url {
         .expect("Unable to join URL's")
 }
 
-
 fn add_auth_params(auth_url: &mut Url) {
     auth_url
         .query_pairs_mut()
@@ -239,13 +238,15 @@ impl Authorization {
 
     fn auth_endpoint_uri(&self) -> Result<Url> {
         let discovery_url = full_auth_url(DISCOVERY_PATH);
-        let discovery: Discovery = self.client.get(discovery_url)
+        let discovery: Discovery = self
+            .client
+            .get(discovery_url)
             .send()
             .map_err(|_| "Failed to HTTP GET the discovery path")?
             .json()
             .map_err(|_| "Unable to deserialize discovery json")?;
-        let mut auth_url =
-            Url::parse(&discovery.authorization_endpoint).map_err(|_| "Unable to parse discovery url")?;
+        let mut auth_url = Url::parse(&discovery.authorization_endpoint)
+            .map_err(|_| "Unable to parse discovery url")?;
         add_auth_params(&mut auth_url);
         Ok(auth_url)
     }

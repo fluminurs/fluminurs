@@ -78,6 +78,7 @@ impl Module {
             name: sanitise_filename(self.code.to_owned()),
             is_directory: true,
             children: None,
+            allow_upload: false,
         };
         if preload_children {
             file.load_children(api)?;
@@ -92,6 +93,7 @@ pub struct File {
     pub name: String,
     pub is_directory: bool,
     pub children: Option<Vec<File>>,
+    allow_upload: bool,
 }
 
 fn sanitise_filename(name: String) -> String {
@@ -120,8 +122,19 @@ impl File {
         }
         let subdirs_data: ApiData =
             api.api_as_json(&format!("/files/?ParentID={}", self.id), Method::GET, None)?;
-        let files_data: ApiData =
-            api.api_as_json(&format!("/files/{}/file", self.id), Method::GET, None)?;
+        let files_data: ApiData = api.api_as_json(
+            &format!(
+                "/files/{}/file{}",
+                self.id,
+                if self.allow_upload {
+                    "?populate=Creator"
+                } else {
+                    ""
+                }
+            ),
+            Method::GET,
+            None,
+        )?;
         let mut subdirs = match subdirs_data.data {
             Data::ApiFileDirectory(subdirs) => subdirs
                 .into_iter()
@@ -130,6 +143,7 @@ impl File {
                     name: sanitise_filename(s.name),
                     is_directory: true,
                     children: None,
+                    allow_upload: s.allow_upload.unwrap_or(false),
                 })
                 .collect(),
             _ => Vec::new(),
@@ -139,9 +153,18 @@ impl File {
                 .into_iter()
                 .map(|s| File {
                     id: s.id,
-                    name: sanitise_filename(s.name),
+                    name: sanitise_filename(format!(
+                        "{}{}",
+                        if self.allow_upload {
+                            format!("{} - ", s.creator_name.unwrap_or("Unknown".to_string()))
+                        } else {
+                            "".to_string()
+                        },
+                        s.name
+                    )),
                     is_directory: false,
                     children: Some(Vec::new()),
+                    allow_upload: false,
                 })
                 .collect(),
             _ => Vec::new(),
@@ -171,7 +194,8 @@ impl File {
         }
         let download_url = self.get_download_url(api)?;
         let mut file = fs::File::create(destination).map_err(|_| "Unable to create file")?;
-        api.get_client().get(download_url)
+        api.get_client()
+            .get(download_url)
             .send()
             .and_then(|mut r| r.copy_to(&mut file))
             .map_err(|_| "Failed during download")?;

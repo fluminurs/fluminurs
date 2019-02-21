@@ -27,12 +27,16 @@ struct TermDetail {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct ApiFileDirectory {
     id: String,
     name: String,
+    allow_upload: Option<bool>,
+    creator_name: Option<String>,
 }
 
-#[derive(Debug, Deserialize)] struct ApiData {
+#[derive(Debug, Deserialize)]
+struct ApiData {
     data: Data,
 }
 

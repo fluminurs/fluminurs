@@ -159,7 +159,7 @@ fn store_credentials(credential_file: &str, username: &str, password: &str) -> R
 }
 
 fn confirm(prompt: &str) -> bool {
-    print!("{}", prompt);
+    print!("{} ", prompt);
     flush_stdout();
     let mut answer = String::new();
     while answer != "y" && answer != "n" {

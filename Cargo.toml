@@ -21,7 +21,7 @@ cookie = "0.11.0"
 htmlescape = "0.3.1"
 rand = "0.6.5"
 reqwest = "0.9.15"
-rpassword = "3.0.1"
+rpassword = "3.0.2"
 sanitize-filename = "0.2.1"
 select = "0.4.2"
 serde = { version = "1.0", features = ["derive"] }

@@ -346,7 +346,7 @@ dependencies = [
  "cookie 0.11.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "htmlescape 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "rand 0.6.5 (registry+https://github.com/rust-lang/crates.io-index)",
- "reqwest 0.9.14 (registry+https://github.com/rust-lang/crates.io-index)",
+ "reqwest 0.9.15 (registry+https://github.com/rust-lang/crates.io-index)",
  "rpassword 3.0.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "sanitize-filename 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "select 0.4.2 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1055,7 +1055,7 @@ dependencies = [
 
 [[package]]
 name = "reqwest"
-version = "0.9.14"
+version = "0.9.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "base64 0.10.1 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1810,7 +1810,7 @@ dependencies = [
 "checksum regex 1.1.0 (registry+https://github.com/rust-lang/crates.io-index)" = "37e7cbbd370869ce2e8dff25c7018702d10b21a20ef7135316f8daecd6c25b7f"
 "checksum regex-syntax 0.6.5 (registry+https://github.com/rust-lang/crates.io-index)" = "8c2f35eedad5295fdf00a63d7d4b238135723f92b434ec06774dad15c7ab0861"
 "checksum remove_dir_all 0.5.1 (registry+https://github.com/rust-lang/crates.io-index)" = "3488ba1b9a2084d38645c4c08276a1752dcbf2c7130d74f1569681ad5d2799c5"
-"checksum reqwest 0.9.14 (registry+https://github.com/rust-lang/crates.io-index)" = "19c4c4990514fbd7a80380b826d81368ba6f6af61007ea142519ce47d72f6b0f"
+"checksum reqwest 0.9.15 (registry+https://github.com/rust-lang/crates.io-index)" = "943b9f85622f53bcf71721e0996f23688e3942e51fc33766c2e24a959316767b"
 "checksum rpassword 3.0.1 (registry+https://github.com/rust-lang/crates.io-index)" = "2e666b2d20d009567502170c786aa4d7089204c18b739a68a861c8f9b2206401"
 "checksum rustc-demangle 0.1.13 (registry+https://github.com/rust-lang/crates.io-index)" = "adacaae16d02b6ec37fdc7acfcddf365978de76d1983d3ee22afc260e1ca9619"
 "checksum rustc-serialize 0.3.24 (registry+https://github.com/rust-lang/crates.io-index)" = "dcf128d1287d2ea9d80910b5f1120d0b8eede3fbf1abe91c40d39ea7d51e6fda"

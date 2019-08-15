@@ -140,7 +140,11 @@ impl Authorization {
             .ok_or("Unknown authentication failure (no code returned)")?;
 
         let params = build_token_form(&code);
+<<<<<<< HEAD
         let mut token_resp = self.auth_http_post(full_api_url("login/adfstoken"), Some(&params), true)?;
+=======
+        let mut token_resp = self.auth_http_post(full_api_url("/login/adfstoken"), Some(&params), true)?;
+>>>>>>> b5fbd20... Use ADFS to authenticate
         if !token_resp.status().is_success() {
             return Err("Unknown authentication failure (no token returned)");
         }

@@ -1,64 +1,26 @@
 use crate::Result;
 
-use reqwest::header::{HeaderValue, CONTENT_TYPE, COOKIE, LOCATION, SET_COOKIE};
-use reqwest::{Client, Method, RedirectPolicy, RequestBuilder, Response};
-use select::document::Document;
-use select::predicate::Attr;
+use reqwest::header::CONTENT_TYPE;
+use reqwest::{Client, Method, RedirectPolicy, Response};
 use serde::Deserialize;
 use std::collections::HashMap;
 use url::Url;
 
-const AUTH_BASE_URL: &str = "https://luminus.nus.edu.sg";
-const DISCOVERY_PATH: &str = "/v2/auth/.well-known/openid-configuration";
-const CLIENT_ID: &str = "verso";
-const SCOPE: &str = "profile email role openid lms.read calendar.read lms.delete lms.write calendar.write gradebook.write offline_access";
-const RESPONSE_TYPE: &str = "id_token token code";
-const REDIRECT_URI: &str = "https://luminus.nus.edu.sg/auth/callback";
+const ADFS_OAUTH2_URL: &str = "https://vafs.nus.edu.sg/adfs/oauth2/authorize";
+const ADFS_CLIENT_ID: &str = "E10493A3B1024F14BDC7D0D8B9F649E9-234390";
+const ADFS_RESOURCE_TYPE: &str = "sg_edu_nus_oauth";
+const ADFS_REDIRECT_URI: &str = "https://luminus.nus.edu.sg/auth/callback";
 const API_BASE_URL: &str = "https://luminus.azure-api.net";
 const OCM_APIM_SUBSCRIPTION_KEY: &str = "6963c200ca9440de8fa1eede730d8f7e";
 
-#[derive(Deserialize)]
-struct Discovery {
-    authorization_endpoint: String,
-}
-
-#[derive(Deserialize)]
-struct Xsrf {
-    name: String,
-    value: String,
-}
-
-impl Xsrf {
-    fn build_login_params<'a>(
-        &'a self,
-        username: &'a str,
-        password: &'a str,
-    ) -> HashMap<&'a str, &'a str> {
-        let mut params = HashMap::new();
-        params.insert("username", username);
-        params.insert("password", password);
-        params.insert(&self.name, &self.value);
-        params
-    }
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct LoginInfo {
-    anti_forgery: Xsrf,
-    login_url: String,
-}
-
 pub struct Authorization {
     pub jwt: Option<String>,
-    cookies: HashMap<String, String>,
-    pub client: Client,
+    pub client: Client
 }
 
-fn full_auth_url(path: &str) -> Url {
-    Url::parse(AUTH_BASE_URL)
-        .and_then(|u| u.join(path))
-        .expect("Unable to join URL's")
+#[derive(Deserialize)]
+struct TokenResponse {
+    access_token: String
 }
 
 fn full_api_url(path: &str) -> Url {
@@ -67,20 +29,50 @@ fn full_api_url(path: &str) -> Url {
         .expect("Unable to join URL's")
 }
 
-fn add_auth_params(auth_url: &mut Url) {
-    auth_url
-        .query_pairs_mut()
-        .append_pair("state", &generate_random_bytes(16))
-        .append_pair("nonce", &generate_random_bytes(16))
-        .append_pair("client_id", CLIENT_ID)
-        .append_pair("scope", SCOPE)
-        .append_pair("response_type", RESPONSE_TYPE)
-        .append_pair("redirect_uri", REDIRECT_URI);
+fn build_auth_url() -> Url {
+    let nonce = generate_random_bytes(16);
+    let mut url = Url::parse(ADFS_OAUTH2_URL)
+            .expect("Unable to parse ADFS URL");
+    url.query_pairs_mut()
+        .append_pair("response_type", "code")
+        .append_pair("client_id", ADFS_CLIENT_ID)
+        .append_pair("state", &nonce)
+        .append_pair("redirect_uri", ADFS_REDIRECT_URI)
+        .append_pair("scope", "")
+        .append_pair("resource", ADFS_RESOURCE_TYPE)
+        .append_pair("nonce", &nonce);
+    url
+}
+
+fn build_auth_form<'a>(username: &'a str, password: &'a str) -> HashMap<&'static str, &'a str> {
+    let mut map = HashMap::new();
+    map.insert("UserName", username);
+    map.insert("Password", password);
+    map.insert("AuthMethod", "FormsAuthentication");
+    map
+}
+
+fn build_token_form(code: &str) -> HashMap<&str, &str> {
+    let mut map = HashMap::new();
+    map.insert("grant_type", "authorization_code");
+    map.insert("client_id", ADFS_CLIENT_ID);
+    map.insert("resource", ADFS_RESOURCE_TYPE);
+    map.insert("code", code);
+    map.insert("redirect_uri", ADFS_REDIRECT_URI);
+    map
 }
 
 fn build_client() -> Result<Client> {
     Client::builder()
-        .redirect(RedirectPolicy::none())
+        .http1_title_case_headers()
+        .cookie_store(true)
+        .redirect(RedirectPolicy::custom(|attempt| {
+            if attempt.previous().len() > 5 {
+                attempt.too_many_redirects()
+            } else {
+                attempt.follow()
+            }
+        }))
         .build()
         .map_err(|_| "Unable to create HTTP client")
 }
@@ -90,23 +82,11 @@ pub fn generate_random_bytes(size: usize) -> String {
         .map(|_| format!("{:02x}", rand::random::<u8>()))
         .collect()
 }
-fn get_redirect_url(response: Response) -> Result<Url> {
-    let location = response
-        .headers()
-        .get(LOCATION)
-        .ok_or("Invalid response from server, expected redirection")?
-        .to_str()
-        .map_err(|_| "Unable to read location header")?
-        .to_string();
-    let url = Url::parse(&location).map_err(|_| " Unable to parse the url of location")?;
-    Ok(url)
-}
 
 impl Authorization {
     pub fn new() -> Result<Authorization> {
         Ok(Authorization {
             jwt: None,
-            cookies: HashMap::new(),
             client: build_client()?,
         })
     }
@@ -132,122 +112,41 @@ impl Authorization {
         Ok(response)
     }
 
-    fn auth_http_post(&mut self, url: Url, query: &HashMap<&str, &str>) -> Result<Response> {
-        self.auth_http_request(Method::POST, url, Some(query))
-    }
-
-    fn auth_http_get(&mut self, url: Url) -> Result<Response> {
-        self.auth_http_request(Method::GET, url, None)
-    }
-
-    fn auth_http_request(
+    fn auth_http_post(
         &mut self,
-        method: Method,
         url: Url,
         form: Option<&HashMap<&str, &str>>,
+        with_apim: bool
     ) -> Result<Response> {
-        let mut request_builder = self.add_cookie_header(self.client.request(method, url));
+        let mut request_builder = self.client.request(Method::POST, url);
+        if with_apim {
+            request_builder = request_builder
+                .header("Ocp-Apim-Subscription-Key", OCM_APIM_SUBSCRIPTION_KEY);
+        }
         if let Some(form) = form {
             request_builder = request_builder.form(form);
         }
-        let response = request_builder.send().map_err(|_| "Failed HTTP request")?;
-        for c in response.headers().get_all(SET_COOKIE).iter() {
-            let cookie = c
-                .to_str()
-                .map_err(|_| "Unable to read set-cookie header")?
-                .to_string();
-            self.add_cookie(cookie);
-        }
-        Ok(response)
+        Ok(request_builder.send().unwrap())
     }
 
     pub fn login(&mut self, username: &str, password: &str) -> Result<bool> {
-        let login_info = self.auth_login_info()?;
-        let url = full_auth_url(&login_info.login_url);
-        let params = login_info
-            .anti_forgery
-            .build_login_params(username, password);
-        let first_response = self.auth_http_post(url, &params)?;
-        if !first_response.status().is_redirection() {
+        let params = build_auth_form(username, password);
+        let auth_resp = self.auth_http_post(build_auth_url(), Some(&params), false)?;
+        if !auth_resp.url().as_str().starts_with(ADFS_REDIRECT_URI) {
             return Err("Invalid credentials");
         }
-        let second_url = get_redirect_url(first_response)?;
-        let callback_url = get_redirect_url(self.auth_http_get(second_url)?)?;
-        self.handle_callback(callback_url)
-    }
+        let (_, code) = auth_resp.url().query_pairs().find(|(key, _)| key == "code")
+            .ok_or("Unknown authentication failure (no code returned)")?;
 
-    // pub fn renew(&mut self) -> Result<bool> {
-    //     if self.jwt.is_none() {
-    //         return Err("Please login first.")
-    //     }
-    //     let auth_url = auth_endpoint_uri();
-    //     let callback_url = get_redirect_url(self.auth_http_get(auth_url)?)?;
-    //     self.handle_callback(callback_url)
-    // }
+        let params = build_token_form(&code);
+        let mut token_resp = self.auth_http_post(full_api_url("/login/adfstoken"), Some(&params), true)?;
+        if !token_resp.status().is_success() {
+            return Err("Unknown authentication failure (no token returned)");
+        }
 
-    fn handle_callback(&mut self, callback_url: Url) -> Result<bool> {
-        let fragment = callback_url.fragment().ok_or("Invalid callback")?;
-        let response: HashMap<String, String> =
-            serde_urlencoded::from_str(&fragment).map_err(|_| "Invalid callback")?;
-        self.jwt = Some(response["id_token"].to_owned());
-        let idsrv = self.cookies["idsrv"].to_owned();
-        self.cookies = HashMap::new();
-        self.cookies.insert("idsrv".to_string(), idsrv);
+        let token_resp_de: TokenResponse = token_resp.json()
+            .map_err(|_| "Failed to deserialise token exchange response")?;
+        self.jwt = Some(token_resp_de.access_token);
         Ok(true)
-    }
-
-    fn auth_login_info(&mut self) -> Result<LoginInfo> {
-        let auth_url = self.auth_endpoint_uri()?;
-        let second_url = get_redirect_url(self.auth_http_get(auth_url)?)?;
-        let second_body = self
-            .auth_http_get(second_url)?
-            .text()
-            .map_err(|_| "Unable to read HTTP response body")?;
-        let raw_json = Document::from(second_body.as_str())
-            .find(Attr("id", "modelJson"))
-            .last()
-            .ok_or("No JSON was sent")?
-            .text()
-            .trim()
-            .to_owned();
-        let json =
-            htmlescape::decode_html(&raw_json).map_err(|_| "Unable to decode HTML entities")?;
-        let login_info: LoginInfo =
-            serde_json::from_str(&json).map_err(|_| "Unable to decode JSON")?;
-        Ok(login_info)
-    }
-
-    fn add_cookie(&mut self, set_cookie_header: String) {
-        let c = cookie::Cookie::parse(set_cookie_header).expect("Unable to parse cookie");
-        let (name, value) = c.name_value();
-        self.cookies.insert(name.to_owned(), value.to_owned());
-    }
-
-    fn generate_cookie_header(&self) -> String {
-        self.cookies
-            .iter()
-            .map(|(k, v)| format!("{}={}; ", k, v))
-            .collect()
-    }
-
-    fn add_cookie_header(&mut self, request_builder: RequestBuilder) -> RequestBuilder {
-        let cookie_value = HeaderValue::from_str(&self.generate_cookie_header())
-            .expect("Unable to add cookie header");
-        request_builder.header(COOKIE, cookie_value)
-    }
-
-    fn auth_endpoint_uri(&self) -> Result<Url> {
-        let discovery_url = full_auth_url(DISCOVERY_PATH);
-        let discovery: Discovery = self
-            .client
-            .get(discovery_url)
-            .send()
-            .map_err(|_| "Failed to HTTP GET the discovery path")?
-            .json()
-            .map_err(|_| "Unable to deserialize discovery json")?;
-        let mut auth_url = Url::parse(&discovery.authorization_endpoint)
-            .map_err(|_| "Unable to parse discovery url")?;
-        add_auth_params(&mut auth_url);
-        Ok(auth_url)
     }
 }

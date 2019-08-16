@@ -15,16 +15,13 @@ opt-level = 'z'
 codegen-units = 1
 
 [dependencies]
-ammonia = "2.1.1"
+ammonia = "3.0.0"
 clap = "2.33.0"
-cookie = "0.12.0"
 htmlescape = "0.3.1"
-rand = "0.6.5"
-reqwest = "0.9.17"
-rpassword = "3.0.2"
+rand = "0.7.0"
+reqwest = "0.9.19"
+rpassword = "4.0.1"
 sanitize-filename = "0.2.1"
-select = "0.4.2"
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0.39"
-serde_urlencoded = "0.5.5"
+serde = { version = "1.0.98", features = ["derive"] }
+serde_json = "1.0.40"
 url = "1.7.2"

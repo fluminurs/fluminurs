@@ -138,7 +138,7 @@ fn get_credentials(credential_file: &str) -> Result<(String, String)> {
             get_credentials(credential_file)
         }
     } else {
-        let username = get_input("Username: ");
+        let username = get_input("Username (include the nusstu\\ prefix): ");
         let password = get_password("Password: ");
         Ok((username, password))
     }

@@ -99,7 +99,7 @@ pub struct File {
 fn sanitise_filename(name: String) -> String {
     if cfg!(windows) {
         sanitize_filename::sanitize_with_options(
-            name,
+            name.trim(),
             sanitize_filename::Options {
                 windows: true,
                 truncate: true,

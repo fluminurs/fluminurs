@@ -3,11 +3,13 @@ pub mod module;
 
 use crate::api::authorization::Authorization;
 use crate::api::module::{Announcement, Module};
-use crate::Result;
-use reqwest::{Client, Method};
+use crate::Error;
+use reqwest::{r#async::Client, Method};
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
 use std::collections::HashMap;
+use futures::{Future, IntoFuture};
+use futures::future::Either;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -50,64 +52,66 @@ enum Data {
     Text(String),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Api {
     authorization: Authorization,
 }
 
 impl Api {
-    pub fn with_login(username: &str, password: &str) -> Result<Api> {
-        let mut auth = Authorization::new()?;
-        auth.login(username, password)?;
-        Ok(Api {
-            authorization: auth,
-        })
+    pub fn with_login<'a>(username: &'a str, password: &'a str) -> impl Future<Item=Api, Error=Error> + 'a {
+        Authorization::with_login(username, password)
+            .map(|auth| Api {
+                authorization: auth
+            })
     }
 
-    fn api_as_json<T: DeserializeOwned>(
+    fn api_as_json<'a, T: DeserializeOwned + 'a>(
         &self,
         path: &str,
         method: Method,
         form: Option<&HashMap<&str, &str>>,
-    ) -> Result<T> {
-        Ok(self
+    ) -> impl Future<Item=T, Error=Error> + 'a {
+        self
             .authorization
-            .api(path, method, form)?
-            .json()
-            .map_err(|_| "Unable to deserialize JSON")?)
+            .api(path, method, form)
+            .and_then(|mut resp| resp.json::<T>()
+                .map_err(|_| "Unable to deserialize JSON"))
     }
 
-    pub fn name(&self) -> Result<String> {
-        let name: Name = self.api_as_json("user/Profile", Method::GET, None)?;
-        Ok(name.user_name_original)
+    pub fn name(&self) -> impl Future<Item=String, Error=Error> + '_ {
+        self.api_as_json::<Name>("user/Profile", Method::GET, None)
+            .map(|name| name.user_name_original)
     }
 
-    fn current_term(&self) -> Result<String> {
-        let term: Term = self.api_as_json(
-            "setting/AcademicWeek/current?populate=termDetail",
-            Method::GET,
-            None,
-        )?;
-        Ok(term.term_detail.term)
+    fn current_term(&self) -> impl Future<Item=String, Error=Error> + '_ {
+        self.api_as_json::<Term>(
+                "setting/AcademicWeek/current?populate=termDetail",
+                Method::GET,
+                None,
+            )
+            .map(|term| term.term_detail.term)
     }
 
-    pub fn modules(&self, current_term_only: bool) -> Result<Vec<Module>> {
-        let api_data: ApiData = self.api_as_json("module", Method::GET, None)?;
-        if let Data::Modules(modules) = api_data.data {
-            if current_term_only {
-                let current_term = self.current_term()?;
-                Ok(modules
-                    .into_iter()
-                    .filter(|m| m.term == current_term)
-                    .collect())
-            } else {
-                Ok(modules)
-            }
-        } else if let Data::Empty(_) = api_data.data {
-            Ok(Vec::new())
-        } else {
-            Err("Invalid API response from server: type mismatch")
-        }
+    pub fn modules(&self, current_term_only: bool)
+        -> impl Future<Item=Vec<Module>, Error=Error> + '_ {
+        self.api_as_json::<ApiData>("module", Method::GET, None)
+            .and_then(move |api_data| {
+                if let Data::Modules(modules) = api_data.data {
+                    if current_term_only {
+                        Either::A(self.current_term()
+                            .map(|current_term| modules
+                                .into_iter()
+                                .filter(|m| m.term == current_term)
+                                .collect()))
+                    } else {
+                        Either::B(Ok(modules).into_future())
+                    }
+                } else if let Data::Empty(_) = api_data.data {
+                    Either::B(Ok(Vec::new()).into_future())
+                } else {
+                    Either::B(Err("Invalid API response from server: type mismatch").into_future())
+                }
+            })
     }
 
     pub fn get_client(&self) -> &Client {

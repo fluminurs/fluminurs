@@ -1,10 +1,13 @@
-use crate::Result;
+use crate::{Result, Error};
 
 use reqwest::header::CONTENT_TYPE;
-use reqwest::{Client, Method, RedirectPolicy, Response};
+use reqwest::{Method, RedirectPolicy};
+use reqwest::r#async::{Client, Response};
 use serde::Deserialize;
 use std::collections::HashMap;
 use url::Url;
+use futures::{Future, IntoFuture};
+use futures::future::Either;
 
 const ADFS_OAUTH2_URL: &str = "https://vafs.nus.edu.sg/adfs/oauth2/authorize";
 const ADFS_CLIENT_ID: &str = "E10493A3B1024F14BDC7D0D8B9F649E9-234390";
@@ -13,9 +16,9 @@ const ADFS_REDIRECT_URI: &str = "https://luminus.nus.edu.sg/auth/callback";
 const API_BASE_URL: &str = "https://luminus.nus.edu.sg/v2/api/";
 const OCM_APIM_SUBSCRIPTION_KEY: &str = "6963c200ca9440de8fa1eede730d8f7e";
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Authorization {
-    pub jwt: Option<String>,
+    pub jwt: String,
     pub client: Client
 }
 
@@ -78,80 +81,83 @@ fn build_client() -> Result<Client> {
         .map_err(|_| "Unable to create HTTP client")
 }
 
-pub fn generate_random_bytes(size: usize) -> String {
+fn generate_random_bytes(size: usize) -> String {
     (0..size)
         .map(|_| format!("{:02x}", rand::random::<u8>()))
         .collect()
 }
 
-impl Authorization {
-    pub fn new() -> Result<Authorization> {
-        Ok(Authorization {
-            jwt: None,
-            client: build_client()?,
-        })
+fn auth_http_post(
+    client: Client,
+    url: Url,
+    form: Option<&HashMap<&str, &str>>,
+    with_apim: bool
+) -> impl Future<Item=Response, Error=Error> {
+    let mut request_builder = client.request(Method::POST, url);
+    if with_apim {
+        request_builder = request_builder
+            .header("Ocp-Apim-Subscription-Key", OCM_APIM_SUBSCRIPTION_KEY);
     }
+    if let Some(form) = form {
+        request_builder = request_builder.form(form);
+    }
+    request_builder.send().map_err(|_| "Failed API request")
+}
 
+impl Authorization {
     pub fn api(
         &self,
         path: &str,
         method: Method,
         form: Option<&HashMap<&str, &str>>,
-    ) -> Result<Response> {
+    ) -> impl Future<Item=Response, Error=Error> + 'static {
         let url = full_api_url(path);
-        let token = self.jwt.clone().ok_or("Please login first")?;
-        let mut request_builder = self
-            .client
+        let mut request_builder = self.client
             .request(method, url)
             .header("Ocp-Apim-Subscription-Key", OCM_APIM_SUBSCRIPTION_KEY)
             .header(CONTENT_TYPE, "application/json")
-            .bearer_auth(token);
+            .bearer_auth(&self.jwt);
         if let Some(form) = form {
             request_builder = request_builder.form(form);
         }
-        let response = request_builder.send().map_err(|_| "Failed API request")?;
-        Ok(response)
+        request_builder.send().map_err(|_| "Failed API request")
     }
 
-    fn auth_http_post(
-        &mut self,
-        url: Url,
-        form: Option<&HashMap<&str, &str>>,
-        with_apim: bool
-    ) -> Result<Response> {
-        let mut request_builder = self.client.request(Method::POST, url);
-        if with_apim {
-            request_builder = request_builder
-                .header("Ocp-Apim-Subscription-Key", OCM_APIM_SUBSCRIPTION_KEY);
-        }
-        if let Some(form) = form {
-            request_builder = request_builder.form(form);
-        }
-        Ok(request_builder.send().unwrap())
-    }
-
-    pub fn login(&mut self, username: &str, password: &str) -> Result<bool> {
+    pub fn with_login<'a>(username: &'a str, password: &'a str)
+        -> impl Future<Item=Authorization, Error=Error> + 'a {
         let params = build_auth_form(username, password);
-        let auth_resp = self.auth_http_post(build_auth_url(), Some(&params), false)?;
-        if !auth_resp.url().as_str().starts_with(ADFS_REDIRECT_URI) {
-            return Err("Invalid credentials");
-        }
-        let (_, code) = auth_resp.url().query_pairs().find(|(key, _)| key == "code")
-            .ok_or("Unknown authentication failure (no code returned)")?;
-
-        let params = build_token_form(&code);
-<<<<<<< HEAD
-        let mut token_resp = self.auth_http_post(full_api_url("login/adfstoken"), Some(&params), true)?;
-=======
-        let mut token_resp = self.auth_http_post(full_api_url("/login/adfstoken"), Some(&params), true)?;
->>>>>>> b5fbd20... Use ADFS to authenticate
-        if !token_resp.status().is_success() {
-            return Err("Unknown authentication failure (no token returned)");
-        }
-
-        let token_resp_de: TokenResponse = token_resp.json()
-            .map_err(|_| "Failed to deserialise token exchange response")?;
-        self.jwt = Some(token_resp_de.access_token);
-        Ok(true)
+        build_client()
+            .into_future()
+            .and_then(move |client| {
+                let client2 = client.clone();
+                auth_http_post(client2, build_auth_url(), Some(&params), false)
+                    .map(|r| (client, r))
+            })
+            .and_then(|(client, auth_resp)| {
+                if !auth_resp.url().as_str().starts_with(ADFS_REDIRECT_URI) {
+                    return Either::A(Err("Invalid credentials").into_future());
+                }
+                let code = auth_resp.url().query_pairs().find(|(key, _)| key == "code")
+                    .map(|(_key, code)| code.into_owned());
+                let client2 = client.clone();
+                Either::B(code
+                    .ok_or("Unknown authentication failure (no code returned)")
+                    .into_future()
+                    .and_then(|code|
+                        auth_http_post(client2, full_api_url("login/adfstoken"), Some(&build_token_form(&code)), true))
+                    .map(|resp| (client, resp)))
+            })
+            .and_then(|(client, mut token_resp)| {
+                if !token_resp.status().is_success() {
+                    return Either::A(Err("Unknown authentication failure (no token returned)").into_future());
+                }
+                Either::B(token_resp.json::<TokenResponse>()
+                    .map_err(|_| "Failed to deserialise token exchange response")
+                    .map(|resp| (client, resp)))
+            })
+            .map(|(client, token_resp_de)| Authorization {
+                jwt: token_resp_de.access_token,
+                client
+            })
     }
 }

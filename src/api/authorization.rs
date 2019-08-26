@@ -10,9 +10,10 @@ const ADFS_OAUTH2_URL: &str = "https://vafs.nus.edu.sg/adfs/oauth2/authorize";
 const ADFS_CLIENT_ID: &str = "E10493A3B1024F14BDC7D0D8B9F649E9-234390";
 const ADFS_RESOURCE_TYPE: &str = "sg_edu_nus_oauth";
 const ADFS_REDIRECT_URI: &str = "https://luminus.nus.edu.sg/auth/callback";
-const API_BASE_URL: &str = "https://luminus.azure-api.net";
+const API_BASE_URL: &str = "https://luminus.nus.edu.sg/v2/api/";
 const OCM_APIM_SUBSCRIPTION_KEY: &str = "6963c200ca9440de8fa1eede730d8f7e";
 
+#[derive(Debug)]
 pub struct Authorization {
     pub jwt: Option<String>,
     pub client: Client
@@ -139,7 +140,7 @@ impl Authorization {
             .ok_or("Unknown authentication failure (no code returned)")?;
 
         let params = build_token_form(&code);
-        let mut token_resp = self.auth_http_post(full_api_url("/login/adfstoken"), Some(&params), true)?;
+        let mut token_resp = self.auth_http_post(full_api_url("login/adfstoken"), Some(&params), true)?;
         if !token_resp.status().is_success() {
             return Err("Unknown authentication failure (no token returned)");
         }

@@ -50,6 +50,7 @@ enum Data {
     Text(String),
 }
 
+#[derive(Debug)]
 pub struct Api {
     authorization: Authorization,
 }
@@ -77,13 +78,13 @@ impl Api {
     }
 
     pub fn name(&self) -> Result<String> {
-        let name: Name = self.api_as_json("/user/Profile", Method::GET, None)?;
+        let name: Name = self.api_as_json("user/Profile", Method::GET, None)?;
         Ok(name.user_name_original)
     }
 
     fn current_term(&self) -> Result<String> {
         let term: Term = self.api_as_json(
-            "/setting/AcademicWeek/current?populate=termDetail",
+            "setting/AcademicWeek/current?populate=termDetail",
             Method::GET,
             None,
         )?;
@@ -91,7 +92,7 @@ impl Api {
     }
 
     pub fn modules(&self, current_term_only: bool) -> Result<Vec<Module>> {
-        let api_data: ApiData = self.api_as_json("/module", Method::GET, None)?;
+        let api_data: ApiData = self.api_as_json("module", Method::GET, None)?;
         if let Data::Modules(modules) = api_data.data {
             if current_term_only {
                 let current_term = self.current_term()?;

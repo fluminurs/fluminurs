@@ -58,7 +58,7 @@ impl Module {
 
     pub fn get_announcements(&self, api: &Api, archived: bool) -> Result<Vec<Announcement>> {
         let path = format!(
-            "/announcement/{}/{}?sortby=displayFrom%20ASC",
+            "announcement/{}/{}?sortby=displayFrom%20ASC",
             if archived { "Archived" } else { "NonArchived" },
             self.id
         );
@@ -121,10 +121,10 @@ impl File {
             return Ok(true);
         }
         let subdirs_data: ApiData =
-            api.api_as_json(&format!("/files/?ParentID={}", self.id), Method::GET, None)?;
+            api.api_as_json(&format!("files/?ParentID={}", self.id), Method::GET, None)?;
         let files_data: ApiData = api.api_as_json(
             &format!(
-                "/files/{}/file{}",
+                "files/{}/file{}",
                 self.id,
                 if self.allow_upload {
                     "?populate=Creator"
@@ -176,7 +176,7 @@ impl File {
 
     pub fn get_download_url(&self, api: &Api) -> Result<Url> {
         let api_data: ApiData = api.api_as_json(
-            &format!("/files/file/{}/downloadurl", self.id),
+            &format!("files/file/{}/downloadurl", self.id),
             Method::GET,
             None,
         )?;

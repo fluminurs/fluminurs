@@ -11,6 +11,7 @@ jobs:
   - name: compile for linux
     os: linux
     script: scripts/compile.linux.sh
+    if: tag IS present
     deploy: &deploy_base
       provider: releases
       api_key:
@@ -24,12 +25,14 @@ jobs:
   - name: compile for macos
     os: osx
     script: scripts/compile.mac.sh
+    if: tag IS present
     deploy:
       <<: *deploy_base
       file: fluminurs.macos
   - name: compile for windows
     os: windows
     script: scripts/compile.windows.sh
+    if: tag IS present
     deploy:
       <<: *deploy_base
       file: fluminurs.windows.exe

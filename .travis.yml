@@ -6,8 +6,6 @@ language: rust
 rust:
 - 1.37.0
 cache: cargo
-before_deploy:
-  - export TRAVIS_TAG="preview"
 jobs:
   include:
   - name: compile for linux
@@ -22,7 +20,7 @@ jobs:
       overwrite: true
       file: fluminurs.linux
       on:
-        all_branches: true
+        tags: true
   - name: compile for macos
     os: osx
     script: scripts/compile.mac.sh

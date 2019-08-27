@@ -8,7 +8,7 @@ rust:
 cache: cargo
 jobs:
   include:
-  - stage: compile for linux
+  - name: compile for linux
     os: linux
     script: scripts/compile.linux.sh
     deploy: &deploy_base
@@ -20,13 +20,13 @@ jobs:
       file: fluminurs.linux
       on:
         all_branches: true
-  - stage: compile for macos
+  - name: compile for macos
     os: osx
     script: scripts/compile.mac.sh
     deploy:
       <<: *deploy_base
       file: fluminurs.macos
-  - stage: compile for windows
+  - name: compile for windows
     os: windows
     script: scripts/compile.windows.sh
     deploy:

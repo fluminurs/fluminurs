@@ -8,10 +8,10 @@ rust:
 cache: cargo
 jobs:
   include:
-  - stage: compile linux assets
+  - stage: compile for linux
     os: linux
     script: scripts/compile.linux.sh
-    deploy:
+    deploy: &deploy_base
       provider: releases
       api_key:
         secure: bvi1hrQ/LCQHBZVhclAhacRxjnQkXnGh+yQLzI/l2JC3PNKKkiyb6FMNmHq+cV6sWwHSARmkcwVhjMQ+3eeD3Lezg0uON9KzVjZGrKTQ6EtWdknTPgMbkrZv+IOwfuD7O45spsC9ADCMdX+V7WTOeMO+xsthd5ISTd4ge7+DbroJGrfPcdwLA2jzHppKOVMnMLnylz5h2xpggSQ9idAuoEBUQkw/UXFYsRofA+IVvnMJPhjeVXayYZ5mUi5qjV1vfCIyp1SpoTitK0Hi2lA4QpqC4XuQV3JMrpzk8g/t8Kgqdr2h16lXKwS1d39E3DWoNaFzRQk6CHeBNxQssCrVmfQn/hVdEsCarmXTjWjBzFqHtFWR2hbnG1G7O7OpS5OacDgUQ6wqH16ZRy59h9ZSyLrjraIo0C2sbbFq1P1f+NihBaKQYTPcIJE3zuhCZVYQEOxThWqz4cqmDzgnQGjCEqh8hZJGtXXogxh3DRSGbfadlZRbU00b+nVa2XKMXwP/bxbSgIVPcMwCH92frNL3219hy8S2fnJENdtH7J5zRTMeu+WfVghedP0bY/SlhhOeIiwy2pyOqvmzaVMLzXrt/e+NCnLgyd9Ieubt2ZFgdPacZtknfMS/WmEnithx6feEB/hgijAOfYKm6zoR55j6AuWtzO9AM/FV6UXDku0esEc=
@@ -20,3 +20,16 @@ jobs:
       file: fluminurs.linux
       on:
         all_branches: true
+  - stage: compile for macos
+    os: osx
+    script: scripts/compile.mac.sh
+    deploy:
+      <<: *deploy_base
+      file: fluminurs.macos
+  - stage: compile for windows
+    os: windows
+    script: scripts/compile.windows.sh
+    deploy:
+      <<: *deploy_base
+      file: fluminurs.windows.exe
+

@@ -1,11 +1,22 @@
 os:
-  - windows
-  - linux
-  - osx
+- windows
+- linux
+- osx
 language: rust
 rust:
-  - 1.37.0
+- 1.37.0
 cache: cargo
-branches:
-  only:
-    - master
+jobs:
+  include:
+  - stage: compile linux assets
+    os: linux
+    script: scripts/compile.linux.sh
+    deploy:
+      provider: releases
+      api_key:
+        secure: YIRg5LL0FlX/yWhf90Z9WE+mhd4d1n5Bn4GZmUAwZsyMT/8TfiZlr7EK80ShUOkfeNZm6Yv9xslItz9/k4z/cBbebKGB6W+suHUGLBVBvcFuu5ZadKja7ShN37kyGemVVFqZ+7+dJI7OEBGcxFyZw0LAH3xxPT0ajQHr7/CAOranQrPT54WzsbagGSXX2XXr6DFIKbTLQm+pA6RfMX8+G9l8exW84JafmSkmoxSML8ZK/+Qu2wPs5aS0CuPx3aTNJ6WccGLlCZfYgXCnb0RFfZBdrRoJyAjqNPQfJ8y1R8snDx3BxKAoOhMU4eay7ChmYS63AhcrkqI1dco0oC7EW60S5ejsjQE/LM00lDoEiHMMfL3zAuAHCvGTavWcTSjueN7+gk12rBGc6auZjkEKGqwfvciUWZvLygs3UV+jOXEhocMPbCokji1Ayb/EnydxDWrQLcdNHtpT+98Fg3KxJCfL0kI10wKt2EmuEWnqRsOpRQiVaJAuhDhKpYHab/ZEn5GmXmQslEICXGamtlqidYD0tHjZSTKYrhsq9yPnYC1iK0hpSMVuxlrNewsIUPbr8lViN2ffF7L+CXgqGgWrzqrp6utrvEUL3NKHTVMG8CuIovNrvZEoVd/S86y1LM6LVGDTH74drXEcezGLqK4RTef4KMSQTrF5Qiu0Dd7i2Yc=
+      draft: true
+      skip_cleanup: true
+      file: fluminurs.linux
+      on:
+        all_branches: true

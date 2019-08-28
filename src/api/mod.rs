@@ -1,14 +1,20 @@
 use std::collections::HashMap;
 
 use futures::{Future, IntoFuture};
-use futures::future::Either;
+use futures::future::{self, Either};
 use reqwest::{Method, RedirectPolicy};
 use reqwest::header::CONTENT_TYPE;
 use reqwest::r#async::{Client, Response};
+use serde::de::DeserializeOwned;
 use serde::Deserialize;
 use url::Url;
 
 use crate::{Error, Result};
+
+use self::module::{Announcement, Module};
+use std::sync::Arc;
+
+pub mod module;
 
 const ADFS_OAUTH2_URL: &str = "https://vafs.nus.edu.sg/adfs/oauth2/authorize";
 const ADFS_CLIENT_ID: &str = "E10493A3B1024F14BDC7D0D8B9F649E9-234390";
@@ -17,10 +23,45 @@ const ADFS_REDIRECT_URI: &str = "https://luminus.nus.edu.sg/auth/callback";
 const API_BASE_URL: &str = "https://luminus.nus.edu.sg/v2/api/";
 const OCM_APIM_SUBSCRIPTION_KEY: &str = "6963c200ca9440de8fa1eede730d8f7e";
 
-#[derive(Debug, Clone)]
-pub struct Authorization {
-    pub jwt: String,
-    pub client: Client
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct Name {
+    user_name_original: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct Term {
+    term_detail: TermDetail,
+}
+
+#[derive(Deserialize)]
+struct TermDetail {
+    term: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ApiFileDirectory {
+    id: String,
+    name: String,
+    allow_upload: Option<bool>,
+    creator_name: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ApiData {
+    data: Data,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+enum Data {
+    Empty(Vec<[(); 0]>),
+    Modules(Vec<Module>),
+    Announcements(Vec<Announcement>),
+    ApiFileDirectory(Vec<ApiFileDirectory>),
+    Text(String),
 }
 
 #[derive(Deserialize)]
@@ -37,7 +78,7 @@ fn full_api_url(path: &str) -> Url {
 fn build_auth_url() -> Url {
     let nonce = generate_random_bytes(16);
     let mut url = Url::parse(ADFS_OAUTH2_URL)
-            .expect("Unable to parse ADFS URL");
+        .expect("Unable to parse ADFS URL");
     url.query_pairs_mut()
         .append_pair("response_type", "code")
         .append_pair("client_id", ADFS_CLIENT_ID)
@@ -93,7 +134,7 @@ fn auth_http_post(
     url: Url,
     form: Option<&HashMap<&str, &str>>,
     with_apim: bool
-) -> impl Future<Item=Response, Error=Error> {
+) -> impl Future<Item=Response, Error=Error> + 'static {
     let mut request_builder = client.request(Method::POST, url);
     if with_apim {
         request_builder = request_builder
@@ -105,7 +146,32 @@ fn auth_http_post(
     request_builder.send().map_err(|_| "Failed API request")
 }
 
-impl Authorization {
+#[derive(Debug, Clone)]
+pub struct Api {
+    pub jwt: Arc<String>,
+    pub client: Client
+}
+
+impl Api {
+    pub fn get_client(&self) -> &Client {
+        &self.client
+    }
+
+    fn api_as_json<T: DeserializeOwned + 'static>(
+        &self,
+        path: &str,
+        method: Method,
+        form: Option<&HashMap<&str, &str>>,
+    ) -> impl Future<Item=T, Error=Error> + 'static {
+        self
+            .api(path, method, form)
+            .and_then(|mut resp| resp.json::<T>()
+                .map_err(|e| {
+                    println!("{:?}", e);
+                    "Unable to deserialize JSON"
+                }))
+    }
+
     pub fn api(
         &self,
         path: &str,
@@ -124,16 +190,58 @@ impl Authorization {
         request_builder.send().map_err(|_| "Failed API request")
     }
 
-    pub fn with_login<'a>(username: &'a str, password: &'a str)
-        -> impl Future<Item=Authorization, Error=Error> + 'a {
-        let params = build_auth_form(username, password);
-        build_client()
-            .into_future()
-            .and_then(move |client| {
-                let client2 = client.clone();
-                auth_http_post(client2, build_auth_url(), Some(&params), false)
-                    .map(|r| (client, r))
+    fn current_term(&self) -> impl Future<Item=String, Error=Error> + 'static {
+        self.api_as_json::<Term>(
+            "setting/AcademicWeek/current?populate=termDetail",
+            Method::GET,
+            None,
+        )
+            .map(|term| term.term_detail.term)
+    }
+
+    pub fn modules(&self, current_term_only: bool)
+        -> impl Future<Item=Vec<Module>, Error=Error> + 'static {
+        let current_term = if current_term_only {
+            Either::A(self.current_term().map(|s| Some(s)))
+        } else {
+            Either::B(future::done(Ok(None)))
+        };
+
+        let modules = self.api_as_json::<ApiData>("module", Method::GET, None);
+
+        modules.join(current_term)
+            .and_then(move |(api_data, current_term)| {
+                if let Data::Modules(modules) = api_data.data {
+                    Either::A(Ok(if let Some(current_term) = current_term {
+                        modules
+                            .into_iter()
+                            .filter(|m| m.term == current_term)
+                            .collect()
+                    } else {
+                        modules
+                    }).into_future())
+                } else if let Data::Empty(_) = api_data.data {
+                    Either::A(Ok(Vec::new()).into_future())
+                } else {
+                    Either::B(Err("Invalid API response from server: type mismatch").into_future())
+                }
             })
+    }
+
+    pub fn name(&self) -> impl Future<Item=String, Error=Error> + 'static {
+        self.api_as_json::<Name>("user/Profile", Method::GET, None)
+            .map(|name| name.user_name_original)
+    }
+
+    pub fn with_login<'a>(username: &str, password: &str)
+        -> impl Future<Item=Api, Error=Error> + 'static {
+        let params = build_auth_form(username, password);
+        let client = match build_client() {
+            Ok(client) => client,
+            Err(str) => return Either::A(future::result(Err(str)))
+        };
+        Either::B(auth_http_post(client.clone(), build_auth_url(), Some(&params), false)
+            .map(move |r| (client, r))
             .and_then(|(client, auth_resp)| {
                 if !auth_resp.url().as_str().starts_with(ADFS_REDIRECT_URI) {
                     return Either::A(Err("Invalid credentials").into_future());
@@ -156,9 +264,9 @@ impl Authorization {
                     .map_err(|_| "Failed to deserialise token exchange response")
                     .map(|resp| (client, resp)))
             })
-            .map(|(client, token_resp_de)| Authorization {
-                jwt: token_resp_de.access_token,
+            .map(|(client, token_resp_de)| Api {
+                jwt: Arc::new(token_resp_de.access_token),
                 client
-            })
+            }))
     }
 }

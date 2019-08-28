@@ -5,13 +5,13 @@ use std::io::{Read, Write};
 use std::path::Path;
 
 use clap::{App, Arg};
-use futures::Future;
+use futures::{future, Future};
 use serde::{Deserialize, Serialize};
 use tokio;
-use tokio_executor;
 
 use crate::api::Api;
 use crate::api::module::{File, Module};
+use futures::future::Either;
 
 type Error = &'static str;
 type Result<T> = std::result::Result<T, Error>;
@@ -33,6 +33,10 @@ fn flush_stdout() {
     io::stdout().flush().expect("Unable to flush stdout");
 }
 
+fn print_swallow<T: std::fmt::Display>(value: T) {
+    println!("{}", value);
+}
+
 fn get_input(prompt: &str) -> String {
     let mut input = String::new();
     print!("{}", prompt);
@@ -49,81 +53,92 @@ fn get_password(prompt: &str) -> String {
     rpassword::read_password().expect("Unable to get non-echo input mode for password")
 }
 
-fn print_files(file: &File, api: &Api, prefix: &str) -> Result<()> {
-    if file.inner.is_directory {
-        for child in file.inner.children.read()
-            .map_err(|_| "Failed to acquire children read lock")?
-            .clone().ok_or("children must be preloaded")?.into_iter() {
-            child.load_children(api.clone()).wait().expect("Failed to load children");
-            print_files(&child, api, &format!("{}/{}", prefix, file.inner.name))?;
+fn print_files(file: &File, prefix: &str) {
+    if file.is_directory() {
+        for child in file.children().expect("Children must have been loaded") {
+            print_files(&child, &format!("{}/{}", prefix, file.name()));
         }
     } else {
-        println!("{}/{}", prefix, file.inner.name);
+        println!("{}/{}", prefix, file.name());
     }
-    Ok(())
 }
 
-fn print_announcements(api: &Api, modules: &[Module]) -> Result<()> {
-    for module in modules {
-        println!("# {} {}", module.code, module.name);
-        println!();
-        for announcement in module.get_announcements(&api, false)
-            .wait().expect("Failed to get announcements") {
-            println!("=== {} ===", announcement.title);
-            let stripped = ammonia::Builder::new()
-                .tags(HashSet::new())
-                .clean(&announcement.description)
-                .to_string();
-            let decoded =
-                htmlescape::decode_html(&stripped).map_err(|_| "Unable to decode HTML Entities")?;
-            println!("{}", decoded);
-        }
-        println!();
-        println!();
-    }
-    Ok(())
+fn print_announcements(api: &Api, modules: &[Module])
+    -> impl Future<Item=(), Error=Error> + 'static {
+    let apic = api.clone();
+    let futures = modules.into_iter()
+        .map( |module| {
+            let module_code = module.code.clone();
+            let module_name = module.name.clone();
+            module.get_announcements(&apic, false)
+                .map(move |anns| (module_code, module_name, anns))
+        })
+        .collect::<Vec<_>>();
+    future::join_all(futures)
+        .and_then(|mods_anns| {
+            for (module_code, module_name, anns) in mods_anns {
+                println!("# {} {}", module_code, module_name);
+                println!();
+                for ann in anns {
+                    println!("=== {} ===", ann.title);
+                    let stripped = ammonia::Builder::new()
+                        .tags(HashSet::new())
+                        .clean(&ann.description)
+                        .to_string();
+                    let decoded =
+                        htmlescape::decode_html(&stripped)
+                            .unwrap_or_else(|_| "Unable to decode HTML Entities".to_owned());
+                    println!("{}", decoded);
+                }
+                println!();
+                println!();
+            }
+            future::result(Ok(()))
+        })
 }
 
-fn list_files(api: &Api, modules: &[Module]) -> Result<()> {
-    for module in modules {
-        let file = module.as_file();
-        file.load_children(api.clone()).wait().expect("Failed to load children");
-        print_files(&file, api, "")?;
-    }
-    Ok(())
+fn load_modules_files(api: &Api, modules: &[Module])
+    -> impl Future<Item=Vec<File>, Error=Error> + 'static {
+    let apic = api.clone();
+    let files = modules.iter().map(Module::as_file).collect::<Vec<File>>();
+    future::join_all(files.into_iter()
+        .map(move |f| f.load_all_children(&apic).map(|_| f)))
 }
 
-fn download_file(api: &Api, file: &File, path: &Path) -> Result<()> {
-    let destination = path.join(file.inner.name.to_owned());
-    if file.inner.is_directory {
-        fs::create_dir_all(destination.to_owned()).map_err(|_| "Unable to create directory")?;
-        for child in file.inner.children.read()
-            .map_err(|_| "Failed to acquire children read lock")?
-            .clone().ok_or("children must be preloaded")?.into_iter() {
-            let api_clone = api.clone();
-            let destination_clone = destination.clone();
-            tokio::spawn(child.load_children(api.clone())
-                    .map_err(|e| {
-                        println!("Failed to load children: {}", e);
-                    })
-                    .and_then(move |_| download_file(&api_clone, &child, &destination_clone)
-                        .map_err(|e| {
-                            println!("Failed to download file: {}", e);
-                        })));
-        }
-    } else {
-        tokio::spawn(file.download(api.clone(), path)
-            .map(move |result| if result {
-                println!("Downloaded to {}", destination.to_string_lossy());
-            })
-            .map_err(|e| {
-                println!("Failed to download file: {}", e);
-            }));
-    }
-    Ok(())
+fn list_files(api: &Api, modules: &[Module])
+    -> impl Future<Item=(), Error=Error> + 'static {
+    load_modules_files(api, modules)
+        .and_then(|files| {
+            for file in files {
+                print_files(&file, "");
+            }
+            future::result(Ok(()))
+        })
+}
+
+fn download_file(api: &Api, file: &File, path: &Path) {
+    let path = path.to_path_buf();
+    tokio::spawn(file.download(api.clone(), &path)
+        .map(move |result| if result {
+            println!("Downloaded to {}", path.to_string_lossy());
+        })
+        .map_err(|e| {
+            println!("Failed to download file: {}", e);
+        }));
 }
 
 fn download_files(api: &Api, modules: &[Module], destination: &str) -> Result<()> {
+    fn recurse_files(api: &Api, file: File, path: &Path) {
+        let path = path.join(file.name());
+        if file.is_directory() {
+            for child in file.children().expect("Children should have been loaded") {
+                recurse_files(api, child, &path);
+            }
+        } else {
+            download_file(api, &file, &path);
+        }
+    }
+
     println!("Download to {}", destination);
     let path = Path::new(destination).to_owned();
     if !path.is_dir() {
@@ -133,14 +148,14 @@ fn download_files(api: &Api, modules: &[Module], destination: &str) -> Result<()
         let file = module.as_file();
         let api_clone = api.clone();
         let path_clone = path.clone();
-        tokio::spawn(file.load_children(api.clone())
+        tokio::spawn(file.load_all_children(api)
             .map_err(|e| {
                 println!("Failed to load children: {}", e);
             })
-            .and_then(move |_| download_file(&api_clone, &file, &path_clone)
-                .map_err(|e| {
-                    println!("Failed to download file: {}", e);
-                })));
+            .and_then(move |_| {
+                recurse_files(&api_clone, file, &path_clone);
+                future::result(Ok(()))
+            }));
     }
     Ok(())
 }
@@ -165,7 +180,7 @@ fn get_credentials(credential_file: &str) -> Result<(String, String)> {
     }
 }
 
-fn store_credentials(credential_file: &str, username: &str, password: &str) -> Result<bool> {
+fn store_credentials(credential_file: &str, username: &str, password: &str) -> Result<()> {
     if confirm("Store credentials (WARNING: they are stored in plain text)? [y/n]") {
         let login = Login {
             username: username.to_owned(),
@@ -176,7 +191,7 @@ fn store_credentials(credential_file: &str, username: &str, password: &str) -> R
         fs::write(credential_file, serialised)
             .map_err(|_| "Unable to write to credentials file")?;
     }
-    Ok(true)
+    Ok(())
 }
 
 fn confirm(prompt: &str) -> bool {
@@ -190,7 +205,7 @@ fn confirm(prompt: &str) -> bool {
     answer == "y"
 }
 
-fn executor_main() {
+fn main() {
     let matches = App::new(PKG_NAME)
         .version(VERSION)
         .author(AUTHOR)
@@ -208,47 +223,48 @@ fn executor_main() {
                 .takes_value(true),
         )
         .get_matches();
-    let credential_file = matches.value_of("credential-file").unwrap_or("login.json");
-    let (username, password) = get_credentials(credential_file).expect("Unable to get credentials");
-    let api = Api::with_login(&username, &password).wait()
-        .map_err(|e| println!("Error: {}", e))
-        .unwrap();
-    if !Path::new(credential_file).exists() {
-        store_credentials(&credential_file, &username, &password)
-            .expect("Unable to store credentials");
-    }
-    println!("Hi {}!", api.name().wait().expect("Unable to read name"));
-    let modules = api.modules(true).wait().expect("Unable to retrieve modules");
-    println!("You are taking:");
-    for module in modules.iter().filter(|m| m.is_taking()) {
-        println!("- {} {}", module.code, module.name);
-    }
-    println!("You are teaching:");
-    for module in modules.iter().filter(|m| m.is_teaching()) {
-        println!("- {} {}", module.code, module.name);
-    }
-    if matches.is_present("announcements") {
-        print_announcements(&api, &modules).expect("Unable to list announcements");
-    }
-    if matches.is_present("files") {
-        list_files(&api, &modules).expect("Unable to list files");
-    }
-    if let Some(destination) = matches.value_of("download") {
-        let destination = destination.to_owned();
-        download_files(&api, &modules, &destination).expect("Failed during downloading");
-    }
-}
+    let credential_file = matches.value_of("credential-file").unwrap_or("login.json")
+        .to_owned();
+    let do_announcements = matches.is_present("announcements");
+    let do_files = matches.is_present("files");
+    let download_destination = matches.value_of("download").map(|s| s.to_owned());
 
-fn main() {
-    // FIXME HACK HACK HACK
-    // Ideally we should use tokio::run to run a future that spawns other futures
-    // But because I'm too lazy to properly re-write main(), I just substituted in wait()
-    // Because we cannot use wait() on an executor (we'll cause threadpool starvation),
-    // I have to manually fix-up an execution context so that libraries that spawn using
-    // tokio::spawn (which is the proper way to spawn a future) work.
-    let rt = tokio::runtime::Runtime::new().expect("Failed to start Tokio runtime");
-    tokio_executor::with_default(&mut rt.executor(),
-        &mut tokio_executor::enter().expect("Failed to enter execution context"),
-        |_| executor_main());
-    rt.shutdown_on_idle().wait().expect("Failed to shutdown runtime");
+    let (username, password) = get_credentials(&credential_file).expect("Unable to get credentials");
+    tokio::run(Api::with_login(&username, &password)
+        .and_then(move |api| future::result(if !Path::new(&credential_file).exists() {
+                store_credentials(&credential_file, &username, &password)
+            } else {
+                Ok(())
+            })
+            .and_then(move |_| api.name().map(|r| (api, r))))
+        .and_then(|(api, name)| {
+            println!("Hi {}!", name);
+            api.modules(true).map(|r| (api, r))
+        })
+        .and_then(move |(api, modules)| {
+            println!("You are taking:");
+            for module in modules.iter().filter(|m| m.is_taking()) {
+                println!("- {} {}", module.code, module.name);
+            }
+            println!("You are teaching:");
+            for module in modules.iter().filter(|m| m.is_teaching()) {
+                println!("- {} {}", module.code, module.name);
+            }
+
+            if do_announcements {
+                Either::A(print_announcements(&api, &modules))
+            } else {
+                Either::B(future::result(Ok(())))
+            }.join(if do_files {
+                Either::A(list_files(&api, &modules))
+            } else {
+                Either::B(future::result(Ok(())))
+            }).join(future::result(if let Some(destination) = download_destination {
+                download_files(&api, &modules, &destination)
+            } else {
+                Ok(())
+            }))
+                .map(|_| ())
+        })
+        .map_err(print_swallow))
 }

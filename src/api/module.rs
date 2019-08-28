@@ -1,7 +1,7 @@
 use std::path::Path;
 use std::sync::{Arc, RwLock};
 
-use futures::{Future, IntoFuture, Stream};
+use futures::{future, Future, IntoFuture, Stream};
 use futures::future::Either;
 use reqwest::Method;
 use serde::Deserialize;
@@ -60,8 +60,8 @@ impl Module {
         !self.is_teaching()
     }
 
-    pub fn get_announcements<'a>(&'a self, api: &'a Api, archived: bool)
-        -> impl Future<Item=Vec<Announcement>, Error=Error> + 'a {
+    pub fn get_announcements(&self, api: &Api, archived: bool)
+        -> impl Future<Item=Vec<Announcement>, Error=Error> + 'static {
         let path = format!(
             "announcement/{}/{}?sortby=displayFrom%20ASC",
             if archived { "Archived" } else { "NonArchived" },
@@ -79,7 +79,7 @@ impl Module {
             })
     }
 
-    pub fn as_file(&self) -> File{
+    pub fn as_file(&self) -> File {
         File {
             inner: Arc::new(FileInner {
                 id: self.id.to_owned(),
@@ -92,17 +92,17 @@ impl Module {
     }
 }
 
-pub struct FileInner {
+struct FileInner {
     id: String,
-    pub name: String,
-    pub is_directory: bool,
-    pub children: RwLock<Option<Vec<File>>>,
+    name: String,
+    is_directory: bool,
+    children: RwLock<Option<Vec<File>>>,
     allow_upload: bool,
 }
 
 #[derive(Clone)]
 pub struct File {
-    pub inner: Arc<FileInner>
+    inner: Arc<FileInner>
 }
 
 fn sanitise_filename(name: String) -> String {
@@ -121,8 +121,23 @@ fn sanitise_filename(name: String) -> String {
 }
 
 impl File {
-    pub fn load_children(&self, api: Api)
+    pub fn name(&self) -> &str {
+        &self.inner.name
+    }
+
+    pub fn is_directory(&self) -> bool {
+        self.inner.is_directory
+    }
+
+    pub fn children(&self) -> Option<Vec<File>> {
+        self.inner.children.read()
+            .expect("Failed to lock mutex")
+            .clone()
+    }
+
+    pub fn load_children(&self, api: &Api)
         -> impl Future<Item=(), Error=Error> + 'static {
+        let apic = api.clone();
         if !self.inner.is_directory {
             return Either::B(Either::A(self.inner.children.write()
                 .map(|mut ptr| {
@@ -132,10 +147,12 @@ impl File {
                 .map_err(|_| "Failed to acquire write lock on File")
                 .into_future()))
         }
-        if self.inner.children.read().map(|children| children.is_some()).unwrap_or(false) {
+        if self.inner.children.read()
+            .map(|children| children.is_some())
+            .unwrap_or(false) {
             return Either::A(Ok(()).into_future());
         }
-        let subdirs_future = api.api_as_json::<ApiData>(
+        let subdirs_future = apic.api_as_json::<ApiData>(
             &format!("files/?ParentID={}", self.inner.id),
             Method::GET,
             None
@@ -156,9 +173,9 @@ impl File {
         });
 
         let allow_upload = self.inner.allow_upload;
-        let files_future = api.api_as_json::<ApiData>(
+        let files_future = apic.api_as_json::<ApiData>(
             &format!(
-                "/files/{}/file{}",
+                "files/{}/file{}",
                 self.inner.id,
                 if self.inner.allow_upload {
                     "?populate=Creator"
@@ -206,6 +223,39 @@ impl File {
             })))
     }
 
+    pub fn load_all_children(&self, api: &Api)
+        -> impl Future<Item=(), Error=Error> + 'static {
+        fn load_all_children_helper((check, api, state): (bool, Api, Vec<File>))
+            -> impl Future<Item=future::Loop<(), (bool, Api, Vec<File>)>, Error=Error> {
+            if check {
+                // Collect the children of the files and load them
+                let new_state = state.into_iter()
+                    .flat_map(|file| file.children()
+                        .expect("Children must have been loaded")
+                        .into_iter())
+                    .collect::<Vec<File>>();
+                Either::A(if new_state.is_empty() {
+                    future::result(Ok(future::Loop::Break(())))
+                } else {
+                    future::result(Ok(future::Loop::Continue((!check, api, new_state))))
+                })
+            } else {
+                let apic = api.clone();
+                Either::B(future::join_all(state.into_iter()
+                    .map(move |file| file.load_children(&apic)
+                        .map(|_| file)))
+                    .map(|files| future::Loop::Continue((true, api, files))))
+            }
+        }
+
+        let selfc = self.clone();
+        let apic = api.clone();
+        self.load_children(api)
+            .and_then(move |_| future::loop_fn((false, apic, vec![selfc]),
+                load_all_children_helper)
+            .map(|_| ()))
+    }
+
     pub fn get_download_url(&self, api: Api)
         -> impl Future<Item=Url, Error=Error> + 'static {
         api.api_as_json::<ApiData>(
@@ -223,12 +273,19 @@ impl File {
 
     pub fn download(&self, api: Api, path: &Path)
         -> impl Future<Item=bool, Error=Error> + 'static {
-        let destination = path.join(self.inner.name.to_owned());
+        let destination = path.to_path_buf();
         if destination.exists() {
             Either::A(Ok(false).into_future())
         } else {
             let download_future = self.get_download_url(api.clone());
-            Either::B(tokio::fs::File::create(destination).map_err(|_| "Unable to open file")
+            let create_dir_future = match destination.parent() {
+                Some(parent) => Either::A(tokio::fs::create_dir_all(parent.to_path_buf())
+                    .map(|_| ())
+                    .map_err(|_| "Unable to create directory")),
+                None => Either::B(future::result(Ok(())))
+            };
+            Either::B(create_dir_future.and_then(move |()| tokio::fs::File::create(destination)
+                .map_err(|_| "Unable to open file"))
                 .and_then(move |file| download_future
                     .and_then(move |download_url|
                         api.get_client()

@@ -259,18 +259,18 @@ impl Api {
         modules.join(current_term)
             .and_then(move |(api_data, current_term)| {
                 if let Data::Modules(modules) = api_data.data {
-                    Either::A(Ok(if let Some(current_term) = current_term {
+                    future::result(Ok(if let Some(current_term) = current_term {
                         modules
                             .into_iter()
                             .filter(|m| m.term == current_term)
                             .collect()
                     } else {
                         modules
-                    }).into_future())
+                    }))
                 } else if let Data::Empty(_) = api_data.data {
-                    Either::A(Ok(Vec::new()).into_future())
+                    future::result(Ok(Vec::new()))
                 } else {
-                    Either::B(Err("Invalid API response from server: type mismatch").into_future())
+                    future::result(Err("Invalid API response from server: type mismatch"))
                 }
             })
     }

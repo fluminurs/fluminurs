@@ -1,10 +1,11 @@
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use futures::{Future, IntoFuture};
 use futures::future::{self, Either};
 use reqwest::{Method, RedirectPolicy};
 use reqwest::header::CONTENT_TYPE;
-use reqwest::r#async::{Client, Response};
+use reqwest::r#async::{Client, Request, RequestBuilder, Response};
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
 use url::Url;
@@ -12,7 +13,6 @@ use url::Url;
 use crate::{Error, Result};
 
 use self::module::{Announcement, Module};
-use std::sync::Arc;
 
 pub mod module;
 
@@ -21,7 +21,8 @@ const ADFS_CLIENT_ID: &str = "E10493A3B1024F14BDC7D0D8B9F649E9-234390";
 const ADFS_RESOURCE_TYPE: &str = "sg_edu_nus_oauth";
 const ADFS_REDIRECT_URI: &str = "https://luminus.nus.edu.sg/auth/callback";
 const API_BASE_URL: &str = "https://luminus.nus.edu.sg/v2/api/";
-const OCM_APIM_SUBSCRIPTION_KEY: &str = "6963c200ca9440de8fa1eede730d8f7e";
+const OCP_APIM_SUBSCRIPTION_KEY: &str = "6963c200ca9440de8fa1eede730d8f7e";
+const OCP_APIM_SUBSCRIPTION_KEY_HEADER: &str = "Ocp-Apim-Subscription-Key";
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -129,21 +130,71 @@ fn generate_random_bytes(size: usize) -> String {
         .collect()
 }
 
+fn infinite_retry_http<F>(
+    client: Client,
+    url: Url,
+    method: Method,
+    form: Option<&HashMap<&str, &str>>,
+    edit_request: F
+) -> impl Future<Item=Response, Error=Error> + 'static
+    where F: (Fn(RequestBuilder) -> RequestBuilder) + 'static {
+    fn retry_forever<F>(c: Client, r: F)
+        -> impl Future<Item=Response, Error=Error> + 'static
+        where F: (Fn(Client) -> Result<Request>) + 'static {
+        fn helper<F>((c, r): (Client, F))
+            -> impl Future<Item=future::Loop<Response, (Client, F)>, Error=Error>
+            where F: (Fn(Client) -> Result<Request>) + 'static {
+            match r(c.clone()) {
+                Ok(req) => Either::A(c.execute(req)
+                    .then(move |result| future::result(Ok(match result {
+                        Ok(response) => future::Loop::Break(response),
+                        Err(_) => future::Loop::Continue((c, r))
+                    })))),
+                Err(err) => Either::B(future::result(Err(err)))
+            }
+        }
+
+        future::loop_fn((c, r), helper)
+    }
+
+    let form = match form {
+        Some(form) => match serde_urlencoded::to_string(form) {
+            Ok(body) => Some(body),
+            Err(_) => return Either::A(future::result(Err("Failed to serialise HTTP form")))
+        },
+        None => None
+    };
+
+    let request_builder = move |c: Client| {
+        let mut request_builder = c.request(method.clone(), url.clone());
+        if let Some(ref form) = form {
+            request_builder = request_builder
+                .body(form.clone())
+                .header(CONTENT_TYPE, "application/x-www-form-urlencoded");
+        } else {
+            request_builder = request_builder
+                .header(CONTENT_TYPE, "application/json");
+        }
+
+        edit_request(request_builder).build()
+            .map_err(|_| "Failed to build request")
+    };
+
+    Either::B(retry_forever(client, request_builder))
+}
+
 fn auth_http_post(
     client: Client,
     url: Url,
     form: Option<&HashMap<&str, &str>>,
     with_apim: bool
 ) -> impl Future<Item=Response, Error=Error> + 'static {
-    let mut request_builder = client.request(Method::POST, url);
-    if with_apim {
-        request_builder = request_builder
-            .header("Ocp-Apim-Subscription-Key", OCM_APIM_SUBSCRIPTION_KEY);
-    }
-    if let Some(form) = form {
-        request_builder = request_builder.form(form);
-    }
-    request_builder.send().map_err(|_| "Failed API request")
+    infinite_retry_http(client, url, Method::POST, form,
+        move |req| if with_apim {
+            req.header(OCP_APIM_SUBSCRIPTION_KEY_HEADER, OCP_APIM_SUBSCRIPTION_KEY)
+        } else {
+            req
+        })
 }
 
 #[derive(Debug, Clone)]
@@ -179,15 +230,11 @@ impl Api {
         form: Option<&HashMap<&str, &str>>,
     ) -> impl Future<Item=Response, Error=Error> + 'static {
         let url = full_api_url(path);
-        let mut request_builder = self.client
-            .request(method, url)
-            .header("Ocp-Apim-Subscription-Key", OCM_APIM_SUBSCRIPTION_KEY)
-            .header(CONTENT_TYPE, "application/json")
-            .bearer_auth(&self.jwt);
-        if let Some(form) = form {
-            request_builder = request_builder.form(form);
-        }
-        request_builder.send().map_err(|_| "Failed API request")
+        let jwt= self.jwt.clone();
+
+        infinite_retry_http(self.client.clone(), url, method, form,
+            move |req| req.header(OCP_APIM_SUBSCRIPTION_KEY_HEADER, OCP_APIM_SUBSCRIPTION_KEY)
+                .bearer_auth(jwt.clone()))
     }
 
     fn current_term(&self) -> impl Future<Item=String, Error=Error> + 'static {

@@ -217,10 +217,7 @@ impl Api {
         self
             .api(path, method, form)
             .and_then(|mut resp| resp.json::<T>()
-                .map_err(|e| {
-                    println!("{:?}", e);
-                    "Unable to deserialize JSON"
-                }))
+                .map_err(|_| "Unable to deserialize JSON"))
     }
 
     pub fn api(

@@ -1,3 +1,18 @@
+use std::collections::HashSet;
+use std::fs;
+use std::io;
+use std::io::{Read, Write};
+use std::path::Path;
+
+use clap::{App, Arg};
+use futures::Future;
+use serde::{Deserialize, Serialize};
+use tokio;
+use tokio_executor;
+
+use crate::api::Api;
+use crate::api::module::{File, Module};
+
 type Error = &'static str;
 type Result<T> = std::result::Result<T, Error>;
 
@@ -7,19 +22,6 @@ const AUTHOR: &str = env!("CARGO_PKG_AUTHORS");
 const DESCRIPTION: &str = env!("CARGO_PKG_DESCRIPTION");
 
 mod api;
-
-use crate::api::module::{File, Module};
-use crate::api::Api;
-use clap::{App, Arg};
-use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
-use std::fs;
-use std::io;
-use std::io::{Read, Write};
-use std::path::Path;
-use futures::Future;
-use tokio;
-use tokio_executor;
 
 #[derive(Serialize, Deserialize)]
 struct Login {

@@ -1,12 +1,14 @@
-use crate::api::{Api, ApiData, Data};
-use crate::Error;
-use reqwest::Method;
-use serde::Deserialize;
 use std::path::Path;
-use url::Url;
+use std::sync::{Arc, RwLock};
+
 use futures::{Future, IntoFuture, Stream};
 use futures::future::Either;
-use std::sync::{RwLock, Arc};
+use reqwest::Method;
+use serde::Deserialize;
+use url::Url;
+
+use crate::api::{Api, ApiData, Data};
+use crate::Error;
 
 #[derive(Debug, Deserialize)]
 struct Access {

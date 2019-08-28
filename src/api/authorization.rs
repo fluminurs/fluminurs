@@ -1,13 +1,14 @@
-use crate::{Result, Error};
-
-use reqwest::header::CONTENT_TYPE;
-use reqwest::{Method, RedirectPolicy};
-use reqwest::r#async::{Client, Response};
-use serde::Deserialize;
 use std::collections::HashMap;
-use url::Url;
+
 use futures::{Future, IntoFuture};
 use futures::future::Either;
+use reqwest::{Method, RedirectPolicy};
+use reqwest::header::CONTENT_TYPE;
+use reqwest::r#async::{Client, Response};
+use serde::Deserialize;
+use url::Url;
+
+use crate::{Error, Result};
 
 const ADFS_OAUTH2_URL: &str = "https://vafs.nus.edu.sg/adfs/oauth2/authorize";
 const ADFS_CLIENT_ID: &str = "E10493A3B1024F14BDC7D0D8B9F649E9-234390";

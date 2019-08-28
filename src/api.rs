@@ -1,15 +1,17 @@
-mod authorization;
-pub mod module;
+use std::collections::HashMap;
+
+use futures::{Future, IntoFuture};
+use futures::future::Either;
+use reqwest::{Method, r#async::Client};
+use serde::de::DeserializeOwned;
+use serde::Deserialize;
 
 use crate::api::authorization::Authorization;
 use crate::api::module::{Announcement, Module};
 use crate::Error;
-use reqwest::{r#async::Client, Method};
-use serde::de::DeserializeOwned;
-use serde::Deserialize;
-use std::collections::HashMap;
-use futures::{Future, IntoFuture};
-use futures::future::Either;
+
+mod authorization;
+pub mod module;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]

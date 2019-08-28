@@ -206,6 +206,10 @@ fn confirm(prompt: &str) -> bool {
 }
 
 fn main() {
+    let mut runtime = tokio::runtime::Builder::new()
+        .core_threads(num_cpus::get() * 4)
+        .build()
+        .expect("Failed to build Tokio runtime");
     let matches = App::new(PKG_NAME)
         .version(VERSION)
         .author(AUTHOR)
@@ -230,7 +234,7 @@ fn main() {
     let download_destination = matches.value_of("download").map(|s| s.to_owned());
 
     let (username, password) = get_credentials(&credential_file).expect("Unable to get credentials");
-    tokio::run(Api::with_login(&username, &password)
+    runtime.spawn(Api::with_login(&username, &password)
         .and_then(move |api| future::result(if !Path::new(&credential_file).exists() {
                 store_credentials(&credential_file, &username, &password)
             } else {
@@ -266,5 +270,6 @@ fn main() {
             }))
                 .map(|_| ())
         })
-        .map_err(print_swallow))
+        .map_err(print_swallow));
+    runtime.shutdown_on_idle().wait().expect("Failed to shutdown Tokio runtime");
 }

@@ -9,3 +9,6 @@ Since IVLE will be deprecated next academic year (AY2019/2020), while LumiNUS ha
 I try to keep to best coding practices and use as little dependencies as possible. Do let me know if you have any suggestions!
 
 PR's are welcome.
+
+## Installation
+Simply click Releases (https://github.com/indocomsoft/fluminurs/releases) and download the executable for your platform

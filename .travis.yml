@@ -5,7 +5,6 @@ os:
 language: rust
 rust:
 - 1.37.0
-cache: cargo
 jobs:
   include:
   - name: compile for linux

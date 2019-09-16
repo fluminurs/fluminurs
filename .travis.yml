@@ -5,6 +5,9 @@ os:
 language: rust
 rust:
 - 1.37.0
+branches:
+  only:
+    - master
 jobs:
   include:
   - name: compile for linux

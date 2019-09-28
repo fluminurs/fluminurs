@@ -4,7 +4,7 @@ os:
 - osx
 language: rust
 rust:
-- 1.37.0
+- 1.38.0
 branches:
   only:
     - master

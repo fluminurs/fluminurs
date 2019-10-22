@@ -1,6 +1,7 @@
 use std::path::Path;
 use std::sync::{Arc, RwLock};
 
+use futures_util::future;
 use reqwest::{Method, Url};
 use serde::Deserialize;
 use tokio::io::AsyncWriteExt;
@@ -235,8 +236,8 @@ impl File {
 
         let mut files = vec![self.clone()];
         loop {
-            for file in &files {
-                file.load_children(&apic).await?;
+            for res in future::join_all(files.iter().map(|file| file.load_children(&apic))).await {
+                res?;
             }
             files = files
                 .into_iter()

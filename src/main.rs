@@ -5,6 +5,7 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
 use clap::{App, Arg};
+use futures_util::future;
 use serde::{Deserialize, Serialize};
 use tokio;
 
@@ -60,17 +61,17 @@ fn print_files(file: &File, prefix: &str) {
 async fn print_announcements(api: &Api, modules: &[Module]) -> Result<()> {
     let apic = api.clone();
 
-    let mut mods_anns = vec![];
-    for module in modules {
-        let module_code = module.code.clone();
-        let module_name = module.name.clone();
-        let anns = module.get_announcements(&apic, false).await?;
-        mods_anns.push((module_code, module_name, anns));
-    }
-    for (module_code, module_name, anns) in mods_anns {
-        println!("# {} {}", module_code, module_name);
+    let module_announcements = future::join_all(
+        modules
+            .iter()
+            .map(|module| module.get_announcements(&apic, false)),
+    )
+    .await;
+    for (module, announcements) in modules.into_iter().zip(module_announcements) {
+        let announcements = announcements?;
+        println!("# {} {}", module.code, module.name);
         println!();
-        for ann in anns {
+        for ann in announcements {
             println!("=== {} ===", ann.title);
             let stripped = ammonia::Builder::new()
                 .tags(HashSet::new())
@@ -88,11 +89,15 @@ async fn print_announcements(api: &Api, modules: &[Module]) -> Result<()> {
 
 async fn load_modules_files(api: &Api, modules: &[Module]) -> Result<Vec<File>> {
     let apic = api.clone();
-    let mut files = vec![];
-    for module in modules {
-        let file = module.as_file();
-        file.load_all_children(&apic).await?;
-        files.push(file);
+
+    let files = modules.into_iter().map(Module::as_file).collect::<Vec<_>>();
+
+    let errors = future::join_all(files.iter().map(|file| file.load_all_children(&apic)))
+        .await
+        .into_iter()
+        .filter(Result::is_err);
+    for e in errors {
+        println!("Failed loading module files: {}", e.unwrap_err());
     }
     Ok(files)
 }
@@ -105,8 +110,7 @@ async fn list_files(api: &Api, modules: &[Module]) -> Result<()> {
     Ok(())
 }
 
-async fn download_file(api: &Api, file: &File, path: &Path) {
-    let path = path.to_path_buf();
+async fn download_file(api: &Api, file: File, path: PathBuf) {
     match file.download(api.clone(), &path).await {
         Ok(true) => println!("Downloaded to {}", path.to_string_lossy()),
         Ok(false) => (),
@@ -121,25 +125,35 @@ async fn download_files(api: &Api, modules: &[Module], destination: &str) -> Res
         return Err("Download destination does not exist or is not a directory");
     }
 
-    for module in modules {
-        let file = module.as_file();
-        match file.load_all_children(api).await {
-            Ok(_) => {
-                let mut files_to_download: Vec<(PathBuf, File)> = vec![(path.clone(), file)];
-                while let Some((path, file)) = files_to_download.pop() {
-                    let path = path.join(file.name());
-                    if file.is_directory() {
-                        for child in file.children().expect("Children should have been loaded") {
-                            files_to_download.push((path.clone(), child));
-                        }
-                    } else {
-                        download_file(api, &file, &path).await;
-                    }
-                }
-            }
-            Err(e) => println!("Failed to load children: {}", e),
+    let files = load_modules_files(api, modules).await?;
+
+    let mut directories = files
+        .into_iter()
+        .zip(std::iter::repeat(path))
+        .collect::<Vec<_>>();
+    let mut files: Vec<(File, PathBuf)> = vec![];
+
+    while let Some((file, path)) = directories.pop() {
+        let path = path.join(file.name());
+        if file.is_directory() {
+            directories.append(
+                &mut file
+                    .children()
+                    .expect("Children should have been loaded")
+                    .into_iter()
+                    .map(|child| (child, path.clone()))
+                    .collect(),
+            );
+        } else {
+            files.push((file, path));
         }
     }
+    future::join_all(
+        files
+            .into_iter()
+            .map(|(file, path)| download_file(api, file, path)),
+    )
+    .await;
     Ok(())
 }
 

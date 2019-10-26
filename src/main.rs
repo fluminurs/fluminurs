@@ -67,7 +67,7 @@ async fn print_announcements(api: &Api, modules: &[Module]) -> Result<()> {
             .map(|module| module.get_announcements(&apic, false)),
     )
     .await;
-    for (module, announcements) in modules.into_iter().zip(module_announcements) {
+    for (module, announcements) in modules.iter().zip(module_announcements) {
         let announcements = announcements?;
         println!("# {} {}", module.code, module.name);
         println!();
@@ -90,7 +90,7 @@ async fn print_announcements(api: &Api, modules: &[Module]) -> Result<()> {
 async fn load_modules_files(api: &Api, modules: &[Module]) -> Result<Vec<File>> {
     let apic = api.clone();
 
-    let files = modules.into_iter().map(Module::as_file).collect::<Vec<_>>();
+    let files = modules.iter().map(Module::as_file).collect::<Vec<_>>();
 
     let errors = future::join_all(files.iter().map(|file| file.load_all_children(&apic)))
         .await

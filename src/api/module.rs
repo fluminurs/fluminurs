@@ -142,7 +142,6 @@ impl File {
                 .write()
                 .map(|mut ptr| {
                     *ptr = Some(Vec::new());
-                    ()
                 })
                 .map_err(|_| "Failed to acquire write lock on File");
         }
@@ -203,7 +202,7 @@ impl File {
                         name: sanitise_filename(format!(
                             "{}{}",
                             if allow_upload {
-                                format!("{} - ", s.creator_name.unwrap_or("Unknown".to_string()))
+                                format!("{} - ", s.creator_name.unwrap_or_else(|| "Unknown".to_string()))
                             } else {
                                 "".to_string()
                             },
@@ -275,13 +274,10 @@ impl File {
             Ok(false)
         } else {
             let download_url = self.get_download_url(api.clone()).await?;
-            match destination.parent() {
-                Some(parent) => {
-                    tokio::fs::create_dir_all(parent.to_path_buf())
-                        .await
-                        .map_err(|_| "Unable to create directory")?;
-                }
-                None => (),
+            if let Some(parent) = destination.parent() {
+                tokio::fs::create_dir_all(parent.to_path_buf())
+                    .await
+                    .map_err(|_| "Unable to create directory")?;
             };
             let mut file = tokio::fs::File::create(destination)
                 .await

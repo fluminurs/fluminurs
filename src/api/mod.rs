@@ -1,8 +1,6 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use backoff::ExponentialBackoff;
-use backoff_futures::BackoffExt;
 use reqwest::header::CONTENT_TYPE;
 use reqwest::{Client, RequestBuilder, Response, Url};
 use reqwest::{Method, RedirectPolicy};
@@ -144,33 +142,27 @@ where
         None
     };
 
-    let retry_http = || {
-        async {
-            let mut request_builder = client.request(method.clone(), url.clone());
-            if let Some(ref form) = form {
-                request_builder = request_builder
-                    .body(form.clone())
-                    .header(CONTENT_TYPE, "application/x-www-form-urlencoded");
-            } else {
-                request_builder = request_builder.header(CONTENT_TYPE, "application/json");
-            }
-            let request = edit_request(request_builder)
-                .build()
-                .map_err(|_| backoff::Error::Permanent("Failed to build request"))?;
-            client
-                .execute(request)
-                .await
-                .map_err(|_| backoff::Error::Transient("HTTP error"))
+    // LumiNUS randomly returns 400 to a perfectly good request for no apparent reason
+    // We'll just ignore it and repeat the request
+    let res = loop {
+        let mut request_builder = client.request(method.clone(), url.clone());
+        if let Some(ref form) = form {
+            request_builder = request_builder
+                .body(form.clone())
+                .header(CONTENT_TYPE, "application/x-www-form-urlencoded");
+        } else {
+            request_builder = request_builder.header(CONTENT_TYPE, "application/json");
+        }
+        let request = edit_request(request_builder)
+            .build()
+            .map_err(|_| "Failed to build request")?;
+
+        let res = client.execute(request).await.map_err(|_| "HTTP error");
+        if let Ok(res) = res {
+            break res;
         }
     };
-
-    let mut backoff = ExponentialBackoff::default();
-    retry_http
-        .with_backoff(&mut backoff)
-        .await
-        .map_err(|e| match e {
-            backoff::Error::Transient(e) | backoff::Error::Permanent(e) => e,
-        })
+    Ok(res)
 }
 
 async fn auth_http_post(

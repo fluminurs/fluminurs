@@ -16,9 +16,6 @@ codegen-units = 1
 
 [dependencies]
 ammonia = "3.0.0"
-async-trait = "0.1.15"
-backoff = "0.1.5"
-backoff-futures = "0.2.0-alpha.2"
 clap = "2.33.0"
 futures-util-preview = { version = "0.3.0-alpha.19", features = ["join-macro"] }
 htmlescape = "0.3.1"

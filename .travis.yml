@@ -3,8 +3,9 @@ os:
 - linux
 - osx
 language: rust
+cache: cargo
 rust:
-- beta
+- 1.39.0
 branches:
   only:
     - master

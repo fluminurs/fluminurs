@@ -3,6 +3,7 @@ os:
 - linux
 - osx
 language: rust
+cache: cargo
 rust:
 - 1.39.0
 branches:

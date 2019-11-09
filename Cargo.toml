@@ -17,16 +17,14 @@ codegen-units = 1
 [dependencies]
 ammonia = "3.0.0"
 clap = "2.33.0"
-futures = "^0.1"
+futures-util = "^0.3"
 htmlescape = "0.3.1"
 num_cpus = "^1"
 rand = "0.7.2"
-reqwest = "0.9.22"
+reqwest = { version = "0.10.0-alpha.1", features = ["cookies", "json"] }
 rpassword = "4.0.1"
 sanitize-filename = "0.2.1"
 serde = { version = "1.0.102", features = ["derive"] }
 serde_json = "1.0.41"
 serde_urlencoded = "^0.5"
-tokio = "^0.1"
-tokio-executor = "^0.1"
-url = "1.7.2"
+tokio = "0.2.0-alpha.6"

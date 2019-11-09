@@ -1,14 +1,13 @@
 use std::path::Path;
 use std::sync::{Arc, RwLock};
 
-use futures::{future, Future, IntoFuture, Stream};
-use futures::future::Either;
-use reqwest::Method;
+use futures_util::future;
+use reqwest::{Method, Url};
 use serde::Deserialize;
-use url::Url;
+use tokio::io::AsyncWriteExt;
 
 use crate::api::{Api, ApiData, Data};
-use crate::Error;
+use crate::Result;
 
 #[derive(Debug, Deserialize)]
 struct Access {
@@ -60,23 +59,20 @@ impl Module {
         !self.is_teaching()
     }
 
-    pub fn get_announcements(&self, api: &Api, archived: bool)
-        -> impl Future<Item=Vec<Announcement>, Error=Error> + 'static {
+    pub async fn get_announcements(&self, api: &Api, archived: bool) -> Result<Vec<Announcement>> {
         let path = format!(
             "announcement/{}/{}?sortby=displayFrom%20ASC",
             if archived { "Archived" } else { "NonArchived" },
             self.id
         );
-        api.api_as_json::<ApiData>(&path, Method::GET, None)
-            .and_then(|api_data| {
-                if let Data::Announcements(announcements) = api_data.data {
-                    Ok(announcements)
-                } else if let Data::Empty(_) = api_data.data {
-                    Ok(Vec::new())
-                } else {
-                    Err("Invalid API response from server: type mismatch")
-                }.into_future()
-            })
+        let api_data = api.api_as_json::<ApiData>(&path, Method::GET, None).await?;
+        if let Data::Announcements(announcements) = api_data.data {
+            Ok(announcements)
+        } else if let Data::Empty(_) = api_data.data {
+            Ok(vec![])
+        } else {
+            Err("Invalid API response from server: type mismatch")
+        }
     }
 
     pub fn as_file(&self) -> File {
@@ -87,7 +83,7 @@ impl Module {
                 is_directory: true,
                 children: RwLock::new(None),
                 allow_upload: false,
-            })
+            }),
         }
     }
 }
@@ -102,7 +98,7 @@ struct FileInner {
 
 #[derive(Clone)]
 pub struct File {
-    inner: Arc<FileInner>
+    inner: Arc<FileInner>,
 }
 
 fn sanitise_filename(name: String) -> String {
@@ -130,33 +126,42 @@ impl File {
     }
 
     pub fn children(&self) -> Option<Vec<File>> {
-        self.inner.children.read()
+        self.inner
+            .children
+            .read()
             .expect("Failed to lock mutex")
             .clone()
     }
 
-    pub fn load_children(&self, api: &Api)
-        -> impl Future<Item=(), Error=Error> + 'static {
+    pub async fn load_children(&self, api: &Api) -> Result<()> {
         let apic = api.clone();
         if !self.inner.is_directory {
-            return Either::B(Either::A(self.inner.children.write()
+            return self
+                .inner
+                .children
+                .write()
                 .map(|mut ptr| {
                     *ptr = Some(Vec::new());
-                    ()
                 })
-                .map_err(|_| "Failed to acquire write lock on File")
-                .into_future()))
+                .map_err(|_| "Failed to acquire write lock on File");
         }
-        if self.inner.children.read()
+        if self
+            .inner
+            .children
+            .read()
             .map(|children| children.is_some())
-            .unwrap_or(false) {
-            return Either::A(Ok(()).into_future());
+            .unwrap_or(false)
+        {
+            return Ok(());
         }
-        let subdirs_future = apic.api_as_json::<ApiData>(
-            &format!("files/?ParentID={}", self.inner.id),
-            Method::GET,
-            None
-        ).map(|subdirs_data| match subdirs_data.data {
+        let subdirs = apic
+            .api_as_json::<ApiData>(
+                &format!("files/?ParentID={}", self.inner.id),
+                Method::GET,
+                None,
+            )
+            .await?;
+        let mut subdirs = match subdirs.data {
             Data::ApiFileDirectory(subdirs) => subdirs
                 .into_iter()
                 .map(|s| File {
@@ -166,26 +171,29 @@ impl File {
                         is_directory: true,
                         children: RwLock::new(None),
                         allow_upload: s.allow_upload.unwrap_or(false),
-                    })
+                    }),
                 })
-                .collect::<Vec<File>>(),
-            _ => Vec::<File>::new(),
-        });
+                .collect::<Vec<_>>(),
+            _ => vec![],
+        };
 
         let allow_upload = self.inner.allow_upload;
-        let files_future = apic.api_as_json::<ApiData>(
-            &format!(
-                "files/{}/file{}",
-                self.inner.id,
-                if self.inner.allow_upload {
-                    "?populate=Creator"
-                } else {
-                    ""
-                }
-            ),
-            Method::GET,
-            None,
-        ).map(move |files_data| match files_data.data {
+        let files = apic
+            .api_as_json::<ApiData>(
+                &format!(
+                    "files/{}/file{}",
+                    self.inner.id,
+                    if self.inner.allow_upload {
+                        "?populate=Creator"
+                    } else {
+                        ""
+                    }
+                ),
+                Method::GET,
+                None,
+            )
+            .await?;
+        let mut files = match files.data {
             Data::ApiFileDirectory(files) => files
                 .into_iter()
                 .map(|s| File {
@@ -194,7 +202,7 @@ impl File {
                         name: sanitise_filename(format!(
                             "{}{}",
                             if allow_upload {
-                                format!("{} - ", s.creator_name.unwrap_or("Unknown".to_string()))
+                                format!("{} - ", s.creator_name.unwrap_or_else(|| "Unknown".to_string()))
                             } else {
                                 "".to_string()
                             },
@@ -203,104 +211,89 @@ impl File {
                         is_directory: false,
                         children: RwLock::new(Some(Vec::new())),
                         allow_upload: false,
-                    })
+                    }),
                 })
-                .collect::<Vec<File>>(),
-            _ => Vec::<File>::new(),
-        });
+                .collect::<Vec<_>>(),
+            _ => vec![],
+        };
 
         let self_clone = self.clone();
-        Either::B(Either::B(subdirs_future.join(files_future)
-            .and_then(move |(mut subdirs, mut files)| {
-                subdirs.append(&mut files);
-                self_clone.inner.children.write()
-                    .map(|mut ptr| {
-                        *ptr = Some(subdirs);
-                        ()
-                    })
-                    .map_err(|_| "Failed to acquire write lock on File")
-                    .into_future()
-            })))
+        subdirs.append(&mut files);
+        self_clone
+            .inner
+            .children
+            .write()
+            .map(|mut ptr| {
+                *ptr = Some(subdirs);
+            })
+            .map_err(|_| "Failed to acquire write lock on File")
     }
 
-    pub fn load_all_children(&self, api: &Api)
-        -> impl Future<Item=(), Error=Error> + 'static {
-        fn load_all_children_helper((check, api, state): (bool, Api, Vec<File>))
-            -> impl Future<Item=future::Loop<(), (bool, Api, Vec<File>)>, Error=Error> {
-            if check {
-                // Collect the children of the files and load them
-                let new_state = state.into_iter()
-                    .flat_map(|file| file.children()
+    pub async fn load_all_children(&self, api: &Api) -> Result<()> {
+        let apic = api.clone();
+        self.load_children(api).await?;
+
+        let mut files = vec![self.clone()];
+        loop {
+            for res in future::join_all(files.iter().map(|file| file.load_children(&apic))).await {
+                res?;
+            }
+            files = files
+                .into_iter()
+                .flat_map(|file| {
+                    file.children()
                         .expect("Children must have been loaded")
-                        .into_iter())
-                    .collect::<Vec<File>>();
-                Either::A(if new_state.is_empty() {
-                    future::result(Ok(future::Loop::Break(())))
-                } else {
-                    future::result(Ok(future::Loop::Continue((!check, api, new_state))))
+                        .into_iter()
                 })
-            } else {
-                let apic = api.clone();
-                Either::B(future::join_all(state.into_iter()
-                    .map(move |file| file.load_children(&apic)
-                        .map(|_| file)))
-                    .map(|files| future::Loop::Continue((true, api, files))))
+                .collect();
+            if files.is_empty() {
+                break;
             }
         }
-
-        let selfc = self.clone();
-        let apic = api.clone();
-        self.load_children(api)
-            .and_then(move |_| future::loop_fn((false, apic, vec![selfc]),
-                load_all_children_helper)
-            .map(|_| ()))
+        Ok(())
     }
 
-    pub fn get_download_url(&self, api: Api)
-        -> impl Future<Item=Url, Error=Error> + 'static {
-        api.api_as_json::<ApiData>(
-            &format!("files/file/{}/downloadurl", self.inner.id),
-            Method::GET,
-            None,
-        ).and_then(|api_data|
-            if let Data::Text(url) = api_data.data {
-                Ok(Url::parse(&url).map_err(|_| "Unable to parse URL")?)
-            } else {
-                Err("Invalid API response from server: type mismatch")
-            }
-        )
+    pub async fn get_download_url(&self, api: Api) -> Result<Url> {
+        let data = api
+            .api_as_json::<ApiData>(
+                &format!("files/file/{}/downloadurl", self.inner.id),
+                Method::GET,
+                None,
+            )
+            .await?;
+        if let Data::Text(url) = data.data {
+            Ok(Url::parse(&url).map_err(|_| "Unable to parse URL")?)
+        } else {
+            Err("Invalid API response from server: type mismatch")
+        }
     }
 
-    pub fn download(&self, api: Api, path: &Path)
-        -> impl Future<Item=bool, Error=Error> + 'static {
+    pub async fn download(&self, api: Api, path: &Path) -> Result<bool> {
         let destination = path.to_path_buf();
         if destination.exists() {
-            Either::A(Ok(false).into_future())
+            Ok(false)
         } else {
-            let download_future = self.get_download_url(api.clone());
-            let create_dir_future = match destination.parent() {
-                Some(parent) => Either::A(tokio::fs::create_dir_all(parent.to_path_buf())
-                    .map(|_| ())
-                    .map_err(|_| "Unable to create directory")),
-                None => Either::B(future::result(Ok(())))
+            let download_url = self.get_download_url(api.clone()).await?;
+            if let Some(parent) = destination.parent() {
+                tokio::fs::create_dir_all(parent.to_path_buf())
+                    .await
+                    .map_err(|_| "Unable to create directory")?;
             };
-            Either::B(create_dir_future.and_then(move |()| tokio::fs::File::create(destination)
-                .map_err(|_| "Unable to open file"))
-                .and_then(move |file| download_future
-                    .and_then(move |download_url|
-                        api.get_client()
-                            .get(download_url)
-                            .send()
-                            .map_err(|_| "Failed during download")
-                            .and_then(|r| r.into_body()
-                                .map_err(|_| "Failed to get file body")
-                                .fold(file, |file, chunk| {
-                                    tokio::io::write_all(file, chunk)
-                                        .map(|(f, _)| f)
-                                        .map_err(|_| "Failed writing to disk")
-                                }))
-                            .map(|_| true)
-                    )))
+            let mut file = tokio::fs::File::create(destination)
+                .await
+                .map_err(|_| "Unable to open file")?;
+            let mut res = api
+                .get_client()
+                .get(download_url)
+                .send()
+                .await
+                .map_err(|_| "Failed during download")?;
+            while let Some(ref chunk) = res.chunk().await.map_err(|_| "Failed during streaming")? {
+                file.write_all(chunk)
+                    .await
+                    .map_err(|_| "Failed writing to disk")?;
+            }
+            Ok(true)
         }
     }
 }

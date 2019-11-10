@@ -9,6 +9,7 @@ rust:
 branches:
   only:
     - master
+    - /^\d+\.\d+\.\d+$/
 jobs:
   include:
   - name: compile for linux

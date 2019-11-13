@@ -21,7 +21,7 @@ futures-util = "^0.3"
 htmlescape = "0.3.1"
 num_cpus = "^1"
 rand = "0.7.2"
-reqwest = { version = "0.10.0-alpha.1", features = ["cookies", "json"] }
+reqwest = { version = "0.10.0-alpha.2", features = ["cookies", "json"] }
 rpassword = "4.0.1"
 sanitize-filename = "0.2.1"
 serde = { version = "1.0.102", features = ["derive"] }

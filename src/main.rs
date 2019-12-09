@@ -12,6 +12,9 @@ use tokio;
 use crate::api::module::{File, Module};
 use crate::api::Api;
 
+#[macro_use]
+extern crate bitflags;
+
 type Error = &'static str;
 type Result<T> = std::result::Result<T, Error>;
 
@@ -26,6 +29,14 @@ mod api;
 struct Login {
     username: String,
     password: String,
+}
+
+bitflags! {
+    struct ModuleTypeFlags: u8 {
+        const TAKING = 0x01;
+        const TEACHING = 0x02;
+        const ALL = Self::TAKING.bits | Self::TEACHING.bits;
+    }
 }
 
 fn flush_stdout() {
@@ -87,23 +98,25 @@ async fn print_announcements(api: &Api, modules: &[Module]) -> Result<()> {
     Ok(())
 }
 
-async fn load_modules_files(api: &Api, modules: &[Module]) -> Result<Vec<File>> {
+async fn load_modules_files(api: &Api, modules: &[Module], include_uploadable_folders: ModuleTypeFlags) -> Result<Vec<File>> {
     let apic = api.clone();
 
-    let files = modules.iter().map(Module::as_file).collect::<Vec<_>>();
+    let files = modules.iter().map(|module| (module.as_file(), module.is_teaching())).collect::<Vec<_>>();
 
-    let errors = future::join_all(files.iter().map(|file| file.load_all_children(&apic)))
+    let errors = future::join_all(files.iter().map(|(file, is_teaching)| file.load_all_children(&apic,
+            include_uploadable_folders.contains( if is_teaching.to_owned() {ModuleTypeFlags::TEACHING} else {ModuleTypeFlags::TAKING} )
+        )))
         .await
         .into_iter()
         .filter(Result::is_err);
     for e in errors {
         println!("Failed loading module files: {}", e.unwrap_err());
     }
-    Ok(files)
+    Ok(files.into_iter().map(|(file, _)| file).collect::<Vec<_>>())
 }
 
-async fn list_files(api: &Api, modules: &[Module]) -> Result<()> {
-    let files = load_modules_files(api, modules).await?;
+async fn list_files(api: &Api, modules: &[Module], include_uploadable_folders: ModuleTypeFlags) -> Result<()> {
+    let files = load_modules_files(api, modules, include_uploadable_folders).await?;
     for file in files {
         print_files(&file, "");
     }
@@ -118,14 +131,14 @@ async fn download_file(api: &Api, file: File, path: PathBuf) {
     }
 }
 
-async fn download_files(api: &Api, modules: &[Module], destination: &str) -> Result<()> {
+async fn download_files(api: &Api, modules: &[Module], destination: &str, include_uploadable_folders: ModuleTypeFlags) -> Result<()> {
     println!("Download to {}", destination);
     let path = Path::new(destination).to_owned();
     if !path.is_dir() {
         return Err("Download destination does not exist or is not a directory");
     }
 
-    let files = load_modules_files(api, modules).await?;
+    let files = load_modules_files(api, modules, include_uploadable_folders).await?;
 
     let mut directories = files
         .into_iter()
@@ -220,6 +233,13 @@ async fn main() -> Result<()> {
                 .long("credential-file")
                 .takes_value(true),
         )
+        .arg(
+            Arg::with_name("skip-uploadable")
+                .long("skip-uploadable-folders")
+                .takes_value(true)
+                .min_values(0)
+                .max_values(u64::max_value()),
+        )
         .get_matches();
     let credential_file = matches
         .value_of("credential-file")
@@ -228,6 +248,27 @@ async fn main() -> Result<()> {
     let do_announcements = matches.is_present("announcements");
     let do_files = matches.is_present("files");
     let download_destination = matches.value_of("download").map(|s| s.to_owned());
+    let include_uploadable_folders = matches
+        .values_of("skip-uploadable")
+        .map(|values| {
+            let skip_flags = values
+                .fold(
+                    Ok(ModuleTypeFlags::empty()),
+                    |acc, s| acc.and_then(|flag|
+                        match s.to_lowercase().as_str() {
+                            "taking" => Ok(flag | ModuleTypeFlags::TAKING),
+                            "teaching" => Ok(flag | ModuleTypeFlags::TEACHING),
+                            "all" => Ok(flag | ModuleTypeFlags::ALL),
+                            _ => Err("Invalid module type"),
+                        })
+                    )
+                .expect("Unable to parse parameters of skip-uploadable");
+            if skip_flags.is_empty() {
+                ModuleTypeFlags::empty()
+            } else {
+                skip_flags ^ ModuleTypeFlags::ALL
+            }})
+        .unwrap_or(ModuleTypeFlags::ALL);
 
     let (username, password) =
         get_credentials(&credential_file).expect("Unable to get credentials");
@@ -257,11 +298,11 @@ async fn main() -> Result<()> {
     }
 
     if do_files {
-        list_files(&api, &modules).await?;
+        list_files(&api, &modules, include_uploadable_folders).await?;
     }
 
     if let Some(destination) = download_destination {
-        download_files(&api, &modules, &destination).await?;
+        download_files(&api, &modules, &destination, include_uploadable_folders).await?;
     }
 
     Ok(())

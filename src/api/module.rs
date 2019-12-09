@@ -133,7 +133,9 @@ impl File {
             .clone()
     }
 
-    pub async fn load_children(&self, api: &Api) -> Result<()> {
+    pub async fn load_children(&self, api: &Api, include_uploadable: bool) -> Result<()> {
+        debug_assert!(include_uploadable || !self.inner.allow_upload);
+        
         let apic = api.clone();
         if !self.inner.is_directory {
             return self
@@ -164,14 +166,21 @@ impl File {
         let mut subdirs = match subdirs.data {
             Data::ApiFileDirectory(subdirs) => subdirs
                 .into_iter()
-                .map(|s| File {
-                    inner: Arc::new(FileInner {
-                        id: s.id,
-                        name: sanitise_filename(s.name),
-                        is_directory: true,
-                        children: RwLock::new(None),
-                        allow_upload: s.allow_upload.unwrap_or(false),
-                    }),
+                .flat_map(|s| {
+                    let s_allow_upload = s.allow_upload.unwrap_or(false);
+                    if include_uploadable || !s_allow_upload {
+                        Some(File {
+                            inner: Arc::new(FileInner {
+                                id: s.id,
+                                name: sanitise_filename(s.name),
+                                is_directory: true,
+                                children: RwLock::new(None),
+                                allow_upload: s_allow_upload,
+                            }),
+                        })
+                    } else {
+                        None
+                    }
                 })
                 .collect::<Vec<_>>(),
             _ => vec![],
@@ -229,13 +238,13 @@ impl File {
             .map_err(|_| "Failed to acquire write lock on File")
     }
 
-    pub async fn load_all_children(&self, api: &Api) -> Result<()> {
+    pub async fn load_all_children(&self, api: &Api, include_uploadable: bool) -> Result<()> {
         let apic = api.clone();
-        self.load_children(api).await?;
+        self.load_children(api, include_uploadable).await?;
 
         let mut files = vec![self.clone()];
         loop {
-            for res in future::join_all(files.iter().map(|file| file.load_children(&apic))).await {
+            for res in future::join_all(files.iter().map(|file| file.load_children(&apic, include_uploadable))).await {
                 res?;
             }
             files = files

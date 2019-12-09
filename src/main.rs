@@ -226,19 +226,20 @@ async fn main() -> Result<()> {
         .arg(
             Arg::with_name("download")
                 .long("download-to")
-                .takes_value(true),
+                .takes_value(true)
         )
         .arg(
             Arg::with_name("credential-file")
                 .long("credential-file")
-                .takes_value(true),
+                .takes_value(true)
         )
         .arg(
             Arg::with_name("skip-uploadable")
                 .long("skip-uploadable-folders")
                 .takes_value(true)
                 .min_values(0)
-                .max_values(u64::max_value()),
+                .max_values(u64::max_value())
+                .possible_values(&["taking", "teaching", "all"])
         )
         .get_matches();
     let credential_file = matches

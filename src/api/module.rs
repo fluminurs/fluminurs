@@ -164,25 +164,21 @@ impl File {
             )
             .await?;
         let mut subdirs = match subdirs.data {
-            Data::ApiFileDirectory(subdirs) => subdirs
-                .into_iter()
-                .flat_map(|s| {
-                    let s_allow_upload = s.allow_upload.unwrap_or(false);
-                    if include_uploadable || !s_allow_upload {
-                        Some(File {
-                            inner: Arc::new(FileInner {
-                                id: s.id,
-                                name: sanitise_filename(s.name),
-                                is_directory: true,
-                                children: RwLock::new(None),
-                                allow_upload: s_allow_upload,
-                            }),
-                        })
-                    } else {
-                        None
-                    }
-                })
-                .collect::<Vec<_>>(),
+            Data::ApiFileDirectory(subdirs) => {
+                subdirs
+                    .into_iter()
+                    .filter(|s| include_uploadable || !s.allow_upload.unwrap_or(false))
+                    .map(|s| File {
+                        inner: Arc::new(FileInner {
+                            id: s.id,
+                            name: sanitise_filename(s.name),
+                            is_directory: true,
+                            children: RwLock::new(None),
+                            allow_upload: s.allow_upload.unwrap_or(false),
+                        }),
+                    })
+                    .collect::<Vec<_>>()
+                },
             _ => vec![],
         };
 

@@ -98,24 +98,42 @@ async fn print_announcements(api: &Api, modules: &[Module]) -> Result<()> {
     Ok(())
 }
 
-async fn load_modules_files(api: &Api, modules: &[Module], include_uploadable_folders: ModuleTypeFlags) -> Result<Vec<File>> {
+async fn load_modules_files(
+    api: &Api,
+    modules: &[Module],
+    include_uploadable_folders: ModuleTypeFlags,
+) -> Result<Vec<File>> {
     let apic = api.clone();
 
-    let files = modules.iter().map(|module| (module.as_file(), module.is_teaching())).collect::<Vec<_>>();
+    let files = modules
+        .iter()
+        .map(|module| (module.as_file(), module.is_teaching()))
+        .collect::<Vec<_>>();
 
-    let errors = future::join_all(files.iter().map(|(file, is_teaching)| file.load_all_children(&apic,
-            include_uploadable_folders.contains( if is_teaching.to_owned() {ModuleTypeFlags::TEACHING} else {ModuleTypeFlags::TAKING} )
-        )))
-        .await
-        .into_iter()
-        .filter(Result::is_err);
+    let errors = future::join_all(files.iter().map(|(file, is_teaching)| {
+        file.load_all_children(
+            &apic,
+            include_uploadable_folders.contains(if is_teaching.to_owned() {
+                ModuleTypeFlags::TEACHING
+            } else {
+                ModuleTypeFlags::TAKING
+            }),
+        )
+    }))
+    .await
+    .into_iter()
+    .filter(Result::is_err);
     for e in errors {
         println!("Failed loading module files: {}", e.unwrap_err());
     }
     Ok(files.into_iter().map(|(file, _)| file).collect::<Vec<_>>())
 }
 
-async fn list_files(api: &Api, modules: &[Module], include_uploadable_folders: ModuleTypeFlags) -> Result<()> {
+async fn list_files(
+    api: &Api,
+    modules: &[Module],
+    include_uploadable_folders: ModuleTypeFlags,
+) -> Result<()> {
     let files = load_modules_files(api, modules, include_uploadable_folders).await?;
     for file in files {
         print_files(&file, "");
@@ -131,7 +149,12 @@ async fn download_file(api: &Api, file: File, path: PathBuf) {
     }
 }
 
-async fn download_files(api: &Api, modules: &[Module], destination: &str, include_uploadable_folders: ModuleTypeFlags) -> Result<()> {
+async fn download_files(
+    api: &Api,
+    modules: &[Module],
+    destination: &str,
+    include_uploadable_folders: ModuleTypeFlags,
+) -> Result<()> {
     println!("Download to {}", destination);
     let path = Path::new(destination).to_owned();
     if !path.is_dir() {
@@ -226,12 +249,12 @@ async fn main() -> Result<()> {
         .arg(
             Arg::with_name("download")
                 .long("download-to")
-                .takes_value(true)
+                .takes_value(true),
         )
         .arg(
             Arg::with_name("credential-file")
                 .long("credential-file")
-                .takes_value(true)
+                .takes_value(true),
         )
         .arg(
             Arg::with_name("skip-uploadable")
@@ -239,7 +262,7 @@ async fn main() -> Result<()> {
                 .takes_value(true)
                 .min_values(0)
                 .max_values(u64::max_value())
-                .possible_values(&["taking", "teaching", "all"])
+                .possible_values(&["taking", "teaching", "all"]),
         )
         .get_matches();
     let credential_file = matches
@@ -253,22 +276,21 @@ async fn main() -> Result<()> {
         .values_of("skip-uploadable")
         .map(|values| {
             let skip_flags = values
-                .fold(
-                    Ok(ModuleTypeFlags::empty()),
-                    |acc, s| acc.and_then(|flag|
-                        match s.to_lowercase().as_str() {
-                            "taking" => Ok(flag | ModuleTypeFlags::TAKING),
-                            "teaching" => Ok(flag | ModuleTypeFlags::TEACHING),
-                            "all" => Ok(flag | ModuleTypeFlags::ALL),
-                            _ => Err("Invalid module type"),
-                        })
-                    )
+                .fold(Ok(ModuleTypeFlags::empty()), |acc, s| {
+                    acc.and_then(|flag| match s.to_lowercase().as_str() {
+                        "taking" => Ok(flag | ModuleTypeFlags::TAKING),
+                        "teaching" => Ok(flag | ModuleTypeFlags::TEACHING),
+                        "all" => Ok(flag | ModuleTypeFlags::ALL),
+                        _ => Err("Invalid module type"),
+                    })
+                })
                 .expect("Unable to parse parameters of skip-uploadable");
             if skip_flags.is_empty() {
                 ModuleTypeFlags::empty()
             } else {
                 skip_flags ^ ModuleTypeFlags::ALL
-            }})
+            }
+        })
         .unwrap_or(ModuleTypeFlags::ALL);
 
     let (username, password) =

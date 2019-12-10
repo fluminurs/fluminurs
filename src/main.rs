@@ -35,7 +35,6 @@ bitflags! {
     struct ModuleTypeFlags: u8 {
         const TAKING = 0x01;
         const TEACHING = 0x02;
-        const ALL = Self::TAKING.bits | Self::TEACHING.bits;
     }
 }
 
@@ -257,8 +256,8 @@ async fn main() -> Result<()> {
                 .takes_value(true),
         )
         .arg(
-            Arg::with_name("skip-uploadable")
-                .long("skip-uploadable-folders")
+            Arg::with_name("include-uploadable")
+                .long("include-uploadable-folders")
                 .takes_value(true)
                 .min_values(0)
                 .max_values(u64::max_value())
@@ -273,25 +272,25 @@ async fn main() -> Result<()> {
     let do_files = matches.is_present("files");
     let download_destination = matches.value_of("download").map(|s| s.to_owned());
     let include_uploadable_folders = matches
-        .values_of("skip-uploadable")
+        .values_of("include-uploadable")
         .map(|values| {
-            let skip_flags = values
+            let include_flags = values
                 .fold(Ok(ModuleTypeFlags::empty()), |acc, s| {
                     acc.and_then(|flag| match s.to_lowercase().as_str() {
                         "taking" => Ok(flag | ModuleTypeFlags::TAKING),
                         "teaching" => Ok(flag | ModuleTypeFlags::TEACHING),
-                        "all" => Ok(flag | ModuleTypeFlags::ALL),
+                        "all" => Ok(flag | ModuleTypeFlags::all()),
                         _ => Err("Invalid module type"),
                     })
                 })
-                .expect("Unable to parse parameters of skip-uploadable");
-            if skip_flags.is_empty() {
-                ModuleTypeFlags::empty()
+                .expect("Unable to parse parameters of include-uploadable");
+            if include_flags.is_empty() {
+                ModuleTypeFlags::all()
             } else {
-                skip_flags ^ ModuleTypeFlags::ALL
+                include_flags
             }
         })
-        .unwrap_or(ModuleTypeFlags::ALL);
+        .unwrap_or(ModuleTypeFlags::empty());
 
     let (username, password) =
         get_credentials(&credential_file).expect("Unable to get credentials");

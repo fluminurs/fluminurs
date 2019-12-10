@@ -133,7 +133,9 @@ impl File {
             .clone()
     }
 
-    pub async fn load_children(&self, api: &Api) -> Result<()> {
+    pub async fn load_children(&self, api: &Api, include_uploadable: bool) -> Result<()> {
+        debug_assert!(include_uploadable || !self.inner.allow_upload);
+
         let apic = api.clone();
         if !self.inner.is_directory {
             return self
@@ -164,6 +166,7 @@ impl File {
         let mut subdirs = match subdirs.data {
             Data::ApiFileDirectory(subdirs) => subdirs
                 .into_iter()
+                .filter(|s| include_uploadable || !s.allow_upload.unwrap_or(false))
                 .map(|s| File {
                     inner: Arc::new(FileInner {
                         id: s.id,
@@ -202,7 +205,10 @@ impl File {
                         name: sanitise_filename(format!(
                             "{}{}",
                             if allow_upload {
-                                format!("{} - ", s.creator_name.unwrap_or_else(|| "Unknown".to_string()))
+                                format!(
+                                    "{} - ",
+                                    s.creator_name.unwrap_or_else(|| "Unknown".to_string())
+                                )
                             } else {
                                 "".to_string()
                             },
@@ -229,13 +235,19 @@ impl File {
             .map_err(|_| "Failed to acquire write lock on File")
     }
 
-    pub async fn load_all_children(&self, api: &Api) -> Result<()> {
+    pub async fn load_all_children(&self, api: &Api, include_uploadable: bool) -> Result<()> {
         let apic = api.clone();
-        self.load_children(api).await?;
+        self.load_children(api, include_uploadable).await?;
 
         let mut files = vec![self.clone()];
         loop {
-            for res in future::join_all(files.iter().map(|file| file.load_children(&apic))).await {
+            for res in future::join_all(
+                files
+                    .iter()
+                    .map(|file| file.load_children(&apic, include_uploadable)),
+            )
+            .await
+            {
                 res?;
             }
             files = files

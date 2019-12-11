@@ -45,6 +45,7 @@ struct ApiFileDirectory {
     name: String,
     allow_upload: Option<bool>,
     creator_name: Option<String>,
+    last_updated_date: String,
 }
 
 #[derive(Debug, Deserialize)]

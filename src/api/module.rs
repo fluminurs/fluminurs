@@ -1,5 +1,6 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
+use std::time::SystemTime;
 
 use futures_util::future;
 use reqwest::{Method, Url};
@@ -83,6 +84,7 @@ impl Module {
                 is_directory: true,
                 children: RwLock::new(None),
                 allow_upload: false,
+                last_updated: std::time::UNIX_EPOCH,
             }),
         }
     }
@@ -94,6 +96,7 @@ struct FileInner {
     is_directory: bool,
     children: RwLock<Option<Vec<File>>>,
     allow_upload: bool,
+    last_updated: SystemTime,
 }
 
 #[derive(Clone)]
@@ -114,6 +117,27 @@ fn sanitise_filename(name: String) -> String {
     } else {
         ["\0", "/"].iter().fold(name, |acc, x| acc.replace(x, "-"))
     }
+}
+
+fn parse_time(time: &String) -> SystemTime {
+    SystemTime::from(
+        chrono::DateTime::<chrono::FixedOffset>::parse_from_rfc3339(&time)
+            .expect("Failed to parse last updated time"),
+    )
+}
+
+pub enum OverwriteMode {
+    Skip,
+    Overwrite,
+    Rename,
+}
+
+pub enum OverwriteResult {
+    NewFile,
+    AlreadyHave,
+    Skipped,
+    Overwritten,
+    Renamed { renamed_path: PathBuf },
 }
 
 impl File {
@@ -174,6 +198,7 @@ impl File {
                         is_directory: true,
                         children: RwLock::new(None),
                         allow_upload: s.allow_upload.unwrap_or(false),
+                        last_updated: parse_time(&s.last_updated_date),
                     }),
                 })
                 .collect::<Vec<_>>(),
@@ -217,6 +242,7 @@ impl File {
                         is_directory: false,
                         children: RwLock::new(Some(Vec::new())),
                         allow_upload: false,
+                        last_updated: parse_time(&s.last_updated_date),
                     }),
                 })
                 .collect::<Vec<_>>(),
@@ -280,14 +306,81 @@ impl File {
         }
     }
 
-    pub async fn download(&self, api: Api, path: &Path) -> Result<bool> {
-        let destination = path.to_path_buf();
-        if destination.exists() {
-            Ok(false)
+    async fn prepare_path(
+        &self,
+        path: &Path,
+        overwrite: &OverwriteMode,
+    ) -> Result<(bool, OverwriteResult)> {
+        let metadata = tokio::fs::metadata(path).await;
+        if let Err(e) = metadata {
+            return match e.kind() {
+                std::io::ErrorKind::NotFound => Ok((true, OverwriteResult::NewFile)), // do download, because file does not already exist
+                std::io::ErrorKind::PermissionDenied => {
+                    Err("Permission denied when retrieving file metadata")
+                }
+                _ => Err("Unable to retrieve file metadata"),
+            };
+        }
+        let old_time = metadata
+            .unwrap()
+            .modified()
+            .map_err(|_| "File system does not support last modified time")?;
+        if self.inner.last_updated <= old_time {
+            Ok((false, OverwriteResult::AlreadyHave)) // don't download, because we already have updated file
         } else {
+            match overwrite {
+                OverwriteMode::Skip => Ok((false, OverwriteResult::Skipped)), // don't download, because user wants to skip updated files
+                OverwriteMode::Overwrite => Ok((true, OverwriteResult::Overwritten)), // do download, because user wants to overwrite updated files
+                OverwriteMode::Rename => {
+                    let mut new_stem = path
+                        .file_stem()
+                        .expect("File does not have name")
+                        .to_os_string();
+                    let date = chrono::DateTime::<chrono::Local>::from(old_time).date();
+                    use chrono::Datelike;
+                    new_stem.push(format!(
+                        "_autorename_{:04}-{:02}-{:02}",
+                        date.year(),
+                        date.month(),
+                        date.day()
+                    ));
+                    let path_extension = path.extension();
+                    let mut i = 0;
+                    let mut suffixed_stem = new_stem.clone();
+                    let renamed_path = loop {
+                        let renamed_path_without_ext = path.with_file_name(suffixed_stem);
+                        let renamed_path = if let Some(ext) = path_extension {
+                            renamed_path_without_ext.with_extension(ext)
+                        } else {
+                            renamed_path_without_ext
+                        };
+                        if !renamed_path.exists() {
+                            break renamed_path;
+                        }
+                        i += 1;
+                        suffixed_stem = new_stem.clone();
+                        suffixed_stem.push(format!("_{}", i));
+                    };
+                    tokio::fs::rename(path, renamed_path.clone())
+                        .await
+                        .map_err(|_| "Failed renaming existing file")?;
+                    Ok((true, OverwriteResult::Renamed { renamed_path })) // do download, because we renamed the old file
+                }
+            }
+        }
+    }
+
+    pub async fn download(
+        &self,
+        api: Api,
+        destination: &Path,
+        overwrite: &OverwriteMode,
+    ) -> Result<OverwriteResult> {
+        let (should_download, result) = self.prepare_path(destination, overwrite).await?;
+        if should_download {
             let download_url = self.get_download_url(api.clone()).await?;
             if let Some(parent) = destination.parent() {
-                tokio::fs::create_dir_all(parent.to_path_buf())
+                tokio::fs::create_dir_all(parent /*.to_path_buf()*/)
                     .await
                     .map_err(|_| "Unable to create directory")?;
             };
@@ -305,7 +398,8 @@ impl File {
                     .await
                     .map_err(|_| "Failed writing to disk")?;
             }
-            Ok(true)
+            // Note: We should actually manually set the last updated time on the disk to the time fetched from server, otherwise there might be situations where we will miss an updated file.
         }
+        Ok(result)
     }
 }

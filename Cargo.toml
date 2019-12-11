@@ -17,6 +17,7 @@ codegen-units = 1
 [dependencies]
 ammonia = "3.0.0"
 bitflags = "1.2.1"
+chrono = "0.4.10"
 clap = "2.33.0"
 futures-util = "^0.3"
 htmlescape = "0.3.1"

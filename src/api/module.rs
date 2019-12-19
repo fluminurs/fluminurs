@@ -380,7 +380,7 @@ impl File {
         if should_download {
             let download_url = self.get_download_url(api.clone()).await?;
             if let Some(parent) = destination.parent() {
-                tokio::fs::create_dir_all(parent /*.to_path_buf()*/)
+                tokio::fs::create_dir_all(parent)
                     .await
                     .map_err(|_| "Unable to create directory")?;
             };

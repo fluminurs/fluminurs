@@ -20,7 +20,6 @@ type Result<T> = std::result::Result<T, Error>;
 
 const PKG_NAME: &str = env!("CARGO_PKG_NAME");
 const VERSION: &str = env!("CARGO_PKG_VERSION");
-const AUTHOR: &str = env!("CARGO_PKG_AUTHORS");
 const DESCRIPTION: &str = env!("CARGO_PKG_DESCRIPTION");
 
 mod api;
@@ -249,7 +248,7 @@ fn confirm(prompt: &str) -> bool {
 async fn main() -> Result<()> {
     let matches = App::new(PKG_NAME)
         .version(VERSION)
-        .author(AUTHOR)
+        .author(&*format!("{} and contributors", clap::crate_authors!(", ")))
         .about(DESCRIPTION)
         .arg(Arg::with_name("announcements").long("announcements"))
         .arg(Arg::with_name("files").long("files"))

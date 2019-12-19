@@ -9,7 +9,7 @@ use futures_util::future;
 use serde::{Deserialize, Serialize};
 use tokio;
 
-use crate::api::module::{File, Module};
+use crate::api::module::{File, Module, OverwriteMode, OverwriteResult};
 use crate::api::Api;
 
 #[macro_use]
@@ -140,10 +140,17 @@ async fn list_files(
     Ok(())
 }
 
-async fn download_file(api: &Api, file: File, path: PathBuf) {
-    match file.download(api.clone(), &path).await {
-        Ok(true) => println!("Downloaded to {}", path.to_string_lossy()),
-        Ok(false) => (),
+async fn download_file(api: &Api, file: File, path: PathBuf, overwrite_mode: &OverwriteMode) {
+    match file.download(api.clone(), &path, overwrite_mode).await {
+        Ok(OverwriteResult::NewFile) => println!("Downloaded to {}", path.to_string_lossy()),
+        Ok(OverwriteResult::AlreadyHave) => {}
+        Ok(OverwriteResult::Skipped) => println!("Skipped {}", path.to_string_lossy()),
+        Ok(OverwriteResult::Overwritten) => println!("Updated {}", path.to_string_lossy()),
+        Ok(OverwriteResult::Renamed { renamed_path }) => println!(
+            "Renamed {} to {}",
+            path.to_string_lossy(),
+            renamed_path.to_string_lossy()
+        ),
         Err(e) => println!("Failed to download file: {}", e),
     }
 }
@@ -153,6 +160,7 @@ async fn download_files(
     modules: &[Module],
     destination: &str,
     include_uploadable_folders: ModuleTypeFlags,
+    overwrite_mode: &OverwriteMode,
 ) -> Result<()> {
     println!("Download to {}", destination);
     let path = Path::new(destination).to_owned();
@@ -186,7 +194,7 @@ async fn download_files(
     future::join_all(
         files
             .into_iter()
-            .map(|(file, path)| download_file(api, file, path)),
+            .map(|(file, path)| download_file(api, file, path, overwrite_mode)),
     )
     .await;
     Ok(())
@@ -263,6 +271,12 @@ async fn main() -> Result<()> {
                 .max_values(u64::max_value())
                 .possible_values(&["taking", "teaching", "all"]),
         )
+        .arg(
+            Arg::with_name("updated")
+                .long("updated")
+                .takes_value(true)
+                .possible_values(&["skip", "overwrite", "rename"]),
+        )
         .get_matches();
     let credential_file = matches
         .value_of("credential-file")
@@ -291,6 +305,15 @@ async fn main() -> Result<()> {
             }
         })
         .unwrap_or(ModuleTypeFlags::empty());
+    let overwrite_mode = matches
+        .value_of("updated")
+        .map(|s| match s.to_lowercase().as_str() {
+            "skip" => OverwriteMode::Skip,
+            "overwrite" => OverwriteMode::Overwrite,
+            "rename" => OverwriteMode::Rename,
+            _ => panic!("Unable to parse parameter of overwrite_mode"),
+        })
+        .unwrap_or(OverwriteMode::Skip);
 
     let (username, password) =
         get_credentials(&credential_file).expect("Unable to get credentials");
@@ -324,7 +347,14 @@ async fn main() -> Result<()> {
     }
 
     if let Some(destination) = download_destination {
-        download_files(&api, &modules, &destination, include_uploadable_folders).await?;
+        download_files(
+            &api,
+            &modules,
+            &destination,
+            include_uploadable_folders,
+            &overwrite_mode,
+        )
+        .await?;
     }
 
     Ok(())

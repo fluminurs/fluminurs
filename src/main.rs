@@ -274,7 +274,10 @@ async fn main() -> Result<()> {
             Arg::with_name("updated")
                 .long("updated")
                 .takes_value(true)
-                .possible_values(&["skip", "overwrite", "rename"]),
+                .value_name("action-on-updated-files")
+                .possible_values(&["skip", "overwrite", "rename"])
+                .number_of_values(1)
+                .default_value("skip"),
         )
         .get_matches();
     let credential_file = matches

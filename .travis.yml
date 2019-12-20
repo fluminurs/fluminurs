@@ -10,6 +10,7 @@ branches:
   only:
     - master
     - /^\d+\.\d+\.\d+$/
+    - /^rust-.*/
 jobs:
   include:
   - name: compile for linux

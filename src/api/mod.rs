@@ -3,7 +3,8 @@ use std::sync::Arc;
 
 use reqwest::header::CONTENT_TYPE;
 use reqwest::{Client, RequestBuilder, Response, Url};
-use reqwest::{Method, RedirectPolicy};
+use reqwest::Method;
+use reqwest::redirect::Policy;
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
 
@@ -110,9 +111,9 @@ fn build_client() -> Result<Client> {
     Client::builder()
         .http1_title_case_headers()
         .cookie_store(true)
-        .redirect(RedirectPolicy::custom(|attempt| {
+        .redirect(Policy::custom(|attempt| {
             if attempt.previous().len() > 5 {
-                attempt.too_many_redirects()
+                attempt.error("too many redirects")
             } else {
                 attempt.follow()
             }

@@ -1,6 +1,6 @@
 [package]
 name = "fluminurs"
-version = "1.1.1"
+version = "1.1.2"
 description = "A client in Rust to access the reverse-engineered LumiNUS API"
 authors = ["Julius Putra Tanu Setiaji <indocomsoft@gmail.com>"]
 edition = "2018"

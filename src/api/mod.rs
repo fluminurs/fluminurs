@@ -2,9 +2,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use reqwest::header::CONTENT_TYPE;
-use reqwest::{Client, RequestBuilder, Response, Url};
-use reqwest::Method;
 use reqwest::redirect::Policy;
+use reqwest::Method;
+use reqwest::{Client, RequestBuilder, Response, Url};
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
 

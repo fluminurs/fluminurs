@@ -41,19 +41,23 @@ pub struct Module {
     pub code: String,
     #[serde(rename = "courseName")]
     pub name: String,
-    access: Access,
+    access: Option<Access>,
     pub term: String,
 }
 
 impl Module {
     pub fn is_teaching(&self) -> bool {
-        let access = &self.access;
-        access.full
-            || access.create
-            || access.update
-            || access.delete
-            || access.settings_read
-            || access.settings_update
+        self.access
+            .as_ref()
+            .map(|access| {
+                access.full
+                    || access.create
+                    || access.update
+                    || access.delete
+                    || access.settings_read
+                    || access.settings_update
+            })
+            .unwrap_or(false)
     }
 
     pub fn is_taking(&self) -> bool {

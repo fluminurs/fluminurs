@@ -21,7 +21,6 @@ chrono = "0.4.10"
 clap = "2.33.0"
 futures-util = "0.3"
 htmlescape = "0.3.1"
-num_cpus = "^1"
 rand = "0.7.3"
 reqwest = { version = "0.10.1", features = ["cookies", "json"] }
 rpassword = "4.0.5"

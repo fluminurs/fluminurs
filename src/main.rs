@@ -105,6 +105,7 @@ async fn load_modules_files(
 
     let files = modules
         .iter()
+        .filter(|module| (module.has_access()))
         .map(|module| (module.as_file(), module.is_teaching()))
         .collect::<Vec<_>>();
 

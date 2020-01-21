@@ -64,6 +64,10 @@ impl Module {
         !self.is_teaching()
     }
 
+    pub fn has_access(&self) -> bool {
+        self.access.is_some()
+    }
+
     pub async fn get_announcements(&self, api: &Api, archived: bool) -> Result<Vec<Announcement>> {
         let path = format!(
             "announcement/{}/{}?sortby=displayFrom%20ASC",

@@ -605,7 +605,7 @@ dependencies = [
  "openssl 0.10.28 (registry+https://github.com/rust-lang/crates.io-index)",
  "openssl-probe 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "openssl-sys 0.9.54 (registry+https://github.com/rust-lang/crates.io-index)",
- "schannel 0.1.17 (registry+https://github.com/rust-lang/crates.io-index)",
+ "schannel 0.1.18 (registry+https://github.com/rust-lang/crates.io-index)",
  "security-framework 0.4.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "security-framework-sys 0.4.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "tempfile 3.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -958,7 +958,7 @@ dependencies = [
 
 [[package]]
 name = "schannel"
-version = "0.1.17"
+version = "0.1.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "lazy_static 1.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1578,7 +1578,7 @@ dependencies = [
 "checksum rpassword 4.0.5 (registry+https://github.com/rust-lang/crates.io-index)" = "99371657d3c8e4d816fb6221db98fa408242b0b53bac08f8676a41f8554fe99f"
 "checksum ryu 1.0.3 (registry+https://github.com/rust-lang/crates.io-index)" = "535622e6be132bccd223f4bb2b8ac8d53cda3c7a6394944d3b2b33fb974f9d76"
 "checksum sanitize-filename 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)" = "23fd0fec94ec480abfd86bb8f4f6c57e0efb36dac5c852add176ea7b04c74801"
-"checksum schannel 0.1.17 (registry+https://github.com/rust-lang/crates.io-index)" = "507a9e6e8ffe0a4e0ebb9a10293e62fdf7657c06f1b8bb07a8fcf697d2abf295"
+"checksum schannel 0.1.18 (registry+https://github.com/rust-lang/crates.io-index)" = "039c25b130bd8c1321ee2d7de7fde2659fa9c2744e4bb29711cfc852ea53cd19"
 "checksum security-framework 0.4.1 (registry+https://github.com/rust-lang/crates.io-index)" = "97bbedbe81904398b6ebb054b3e912f99d55807125790f3198ac990d98def5b0"
 "checksum security-framework-sys 0.4.1 (registry+https://github.com/rust-lang/crates.io-index)" = "06fd2f23e31ef68dd2328cc383bd493142e46107a3a0e24f7d734e3f3b80fe4c"
 "checksum serde 1.0.105 (registry+https://github.com/rust-lang/crates.io-index)" = "e707fbbf255b8fc8c3b99abb91e7257a622caeb20a9818cbadbeeede4e0932ff"

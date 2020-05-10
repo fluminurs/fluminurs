@@ -274,7 +274,7 @@ dependencies = [
  "futures-core 0.3.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures-macro 0.3.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures-task 0.3.5 (registry+https://github.com/rust-lang/crates.io-index)",
- "pin-project 0.4.13 (registry+https://github.com/rust-lang/crates.io-index)",
+ "pin-project 0.4.14 (registry+https://github.com/rust-lang/crates.io-index)",
  "pin-utils 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "proc-macro-hack 0.5.15 (registry+https://github.com/rust-lang/crates.io-index)",
  "proc-macro-nested 0.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -383,7 +383,7 @@ dependencies = [
  "itoa 0.4.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "log 0.4.8 (registry+https://github.com/rust-lang/crates.io-index)",
  "net2 0.2.34 (registry+https://github.com/rust-lang/crates.io-index)",
- "pin-project 0.4.13 (registry+https://github.com/rust-lang/crates.io-index)",
+ "pin-project 0.4.14 (registry+https://github.com/rust-lang/crates.io-index)",
  "time 0.1.43 (registry+https://github.com/rust-lang/crates.io-index)",
  "tokio 0.2.20 (registry+https://github.com/rust-lang/crates.io-index)",
  "tower-service 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -746,15 +746,15 @@ dependencies = [
 
 [[package]]
 name = "pin-project"
-version = "0.4.13"
+version = "0.4.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
- "pin-project-internal 0.4.13 (registry+https://github.com/rust-lang/crates.io-index)",
+ "pin-project-internal 0.4.14 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
 name = "pin-project-internal"
-version = "0.4.13"
+version = "0.4.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "proc-macro2 1.0.12 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1558,8 +1558,8 @@ dependencies = [
 "checksum phf_codegen 0.8.0 (registry+https://github.com/rust-lang/crates.io-index)" = "cbffee61585b0411840d3ece935cce9cb6321f01c45477d30066498cd5e1a815"
 "checksum phf_generator 0.8.0 (registry+https://github.com/rust-lang/crates.io-index)" = "17367f0cc86f2d25802b2c26ee58a7b23faeccf78a396094c13dced0d0182526"
 "checksum phf_shared 0.8.0 (registry+https://github.com/rust-lang/crates.io-index)" = "c00cf8b9eafe68dde5e9eaa2cef8ee84a9336a47d566ec55ca16589633b65af7"
-"checksum pin-project 0.4.13 (registry+https://github.com/rust-lang/crates.io-index)" = "82c3bfbfb5bb42f99498c7234bbd768c220eb0cea6818259d0d18a1aa3d2595d"
-"checksum pin-project-internal 0.4.13 (registry+https://github.com/rust-lang/crates.io-index)" = "ccbf6449dcfb18562c015526b085b8df1aa3cdab180af8ec2ebd300a3bd28f63"
+"checksum pin-project 0.4.14 (registry+https://github.com/rust-lang/crates.io-index)" = "2bbe07cee13ca15295ce93a5b1094d63e0420603e91ffda4f86d4478988916f2"
+"checksum pin-project-internal 0.4.14 (registry+https://github.com/rust-lang/crates.io-index)" = "1b789ec51a10e5a985a9863ef8791412523334d6240fab2cf40dd9fd47496dc6"
 "checksum pin-project-lite 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)" = "f7505eeebd78492e0f6108f7171c4948dbb120ee8119d9d77d0afa5469bef67f"
 "checksum pin-utils 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)" = "8b870d8c151b6f2fb93e84a13146138f05d02ed11c7e7c54f8826aaaf7c9f184"
 "checksum pkg-config 0.3.17 (registry+https://github.com/rust-lang/crates.io-index)" = "05da548ad6865900e60eaba7f589cc0783590a92e940c26953ff81ddbab2d677"

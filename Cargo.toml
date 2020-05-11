@@ -26,6 +26,6 @@ reqwest = { version = "0.10.4", features = ["cookies", "json"] }
 rpassword = "4.0.5"
 sanitize-filename = "0.2.1"
 serde = { version = "1.0.110", features = ["derive"] }
-serde_json = "1.0.52"
+serde_json = "1.0.53"
 serde_urlencoded = "0.6"
 tokio = { version = "0.2.20", features = ["full"] }

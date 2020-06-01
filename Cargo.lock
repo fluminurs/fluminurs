@@ -948,7 +948,7 @@ dependencies = [
 
 [[package]]
 name = "ryu"
-version = "1.0.4"
+version = "1.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
@@ -1014,7 +1014,7 @@ version = "1.0.53"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "itoa 0.4.5 (registry+https://github.com/rust-lang/crates.io-index)",
- "ryu 1.0.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "ryu 1.0.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde 1.0.111 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
@@ -1581,7 +1581,7 @@ dependencies = [
 "checksum remove_dir_all 0.5.2 (registry+https://github.com/rust-lang/crates.io-index)" = "4a83fa3702a688b9359eccba92d153ac33fd2e8462f9e0e3fdf155239ea7792e"
 "checksum reqwest 0.10.6 (registry+https://github.com/rust-lang/crates.io-index)" = "3b82c9238b305f26f53443e3a4bc8528d64b8d0bee408ec949eb7bf5635ec680"
 "checksum rpassword 4.0.5 (registry+https://github.com/rust-lang/crates.io-index)" = "99371657d3c8e4d816fb6221db98fa408242b0b53bac08f8676a41f8554fe99f"
-"checksum ryu 1.0.4 (registry+https://github.com/rust-lang/crates.io-index)" = "ed3d612bc64430efeb3f7ee6ef26d590dce0c43249217bddc62112540c7941e1"
+"checksum ryu 1.0.5 (registry+https://github.com/rust-lang/crates.io-index)" = "71d301d4193d031abdd79ff7e3dd721168a9572ef3fe51a1517aba235bd8f86e"
 "checksum sanitize-filename 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)" = "23fd0fec94ec480abfd86bb8f4f6c57e0efb36dac5c852add176ea7b04c74801"
 "checksum schannel 0.1.19 (registry+https://github.com/rust-lang/crates.io-index)" = "8f05ba609c234e60bee0d547fe94a4c7e9da733d1c962cf6e59efa4cd9c8bc75"
 "checksum security-framework 0.4.4 (registry+https://github.com/rust-lang/crates.io-index)" = "64808902d7d99f78eaddd2b4e2509713babc3dc3c85ad6f4c447680f3c01e535"

@@ -1105,7 +1105,7 @@ dependencies = [
 
 [[package]]
 name = "standback"
-version = "0.2.10"
+version = "0.2.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "version_check 0.9.2 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1250,7 +1250,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "const_fn 0.4.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "libc 0.2.78 (registry+https://github.com/rust-lang/crates.io-index)",
- "standback 0.2.10 (registry+https://github.com/rust-lang/crates.io-index)",
+ "standback 0.2.11 (registry+https://github.com/rust-lang/crates.io-index)",
  "stdweb 0.4.20 (registry+https://github.com/rust-lang/crates.io-index)",
  "time-macros 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "version_check 0.9.2 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1274,7 +1274,7 @@ dependencies = [
  "proc-macro-hack 0.5.18 (registry+https://github.com/rust-lang/crates.io-index)",
  "proc-macro2 1.0.24 (registry+https://github.com/rust-lang/crates.io-index)",
  "quote 1.0.7 (registry+https://github.com/rust-lang/crates.io-index)",
- "standback 0.2.10 (registry+https://github.com/rust-lang/crates.io-index)",
+ "standback 0.2.11 (registry+https://github.com/rust-lang/crates.io-index)",
  "syn 1.0.44 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
@@ -1707,7 +1707,7 @@ dependencies = [
 "checksum siphasher 0.3.3 (registry+https://github.com/rust-lang/crates.io-index)" = "fa8f3741c7372e75519bd9346068370c9cdaabcc1f9599cbcf2a2719352286b7"
 "checksum slab 0.4.2 (registry+https://github.com/rust-lang/crates.io-index)" = "c111b5bd5695e56cffe5129854aa230b39c93a305372fdbb2668ca2394eea9f8"
 "checksum socket2 0.3.15 (registry+https://github.com/rust-lang/crates.io-index)" = "b1fa70dc5c8104ec096f4fe7ede7a221d35ae13dcd19ba1ad9a81d2cab9a1c44"
-"checksum standback 0.2.10 (registry+https://github.com/rust-lang/crates.io-index)" = "33a71ea1ea5f8747d1af1979bfb7e65c3a025a70609f04ceb78425bc5adad8e6"
+"checksum standback 0.2.11 (registry+https://github.com/rust-lang/crates.io-index)" = "f4e0831040d2cf2bdfd51b844be71885783d489898a192f254ae25d57cce725c"
 "checksum stdweb 0.4.20 (registry+https://github.com/rust-lang/crates.io-index)" = "d022496b16281348b52d0e30ae99e01a73d737b2f45d38fed4edf79f9325a1d5"
 "checksum stdweb-derive 0.5.3 (registry+https://github.com/rust-lang/crates.io-index)" = "c87a60a40fccc84bef0652345bbbbbe20a605bf5d0ce81719fc476f5c03b50ef"
 "checksum stdweb-internal-macros 0.2.9 (registry+https://github.com/rust-lang/crates.io-index)" = "58fa5ff6ad0d98d1ffa8cb115892b6e69d67799f6763e162a1c9db421dc22e11"

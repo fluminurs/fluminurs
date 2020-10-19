@@ -24,7 +24,7 @@ htmlescape = "0.3.1"
 rand = "0.7.3"
 reqwest = { version = "0.10.8", features = ["cookies", "json"] }
 rpassword = "5.0.0"
-sanitize-filename = "0.2.1"
+sanitize-filename = "0.3.0"
 serde = { version = "1.0.117", features = ["derive"] }
 serde_json = "1.0.59"
 serde_urlencoded = "0.7"

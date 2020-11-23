@@ -1,0 +1,30 @@
+name: Rust
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Rust ${{ matrix.rust }} / OS ${{ matrix.os }}
+    strategy:
+      fail-fast: true
+      matrix:
+        os: ['windows-latest', 'ubuntu-latest', 'macos-latest']
+        rust: ['1.47.0', '1.48.0']
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: Update rust version
+      run: rustup update --no-self-update ${{ matrix.rust }} && rustup default ${{ matrix.rust}}
+    - name: Build
+      run: cargo build --verbose
+    - name: Run tests
+      run: cargo test --verbose

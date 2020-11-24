@@ -61,7 +61,7 @@ jobs:
           echo ::set-output name=ARTIFACT::$artifact
         shell: bash
       - name: Compile
-        run: scripts/compile.${{ steps.platform_artifact.outputs.PLATFORM }}.sh
+        run: ./scripts/compile.${{ steps.platform_artifact.outputs.PLATFORM }}.sh
         shell: bash
       - name: Upload Release Asset
         id: upload-release-asset

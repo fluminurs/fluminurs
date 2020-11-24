@@ -53,8 +53,10 @@ jobs:
         id: artifact
         run: |
           case ${{ matrix.os }} in
-            *windows*) echo ::set-output name=ARTIFACT::fluminurs.${{ matrix.os }}.exe ;;
-            *)         echo ::set-output name=ARTIFACT::fluminurs.${{ matrix.os }} ;;
+            *windows*) echo ::set-output name=ARTIFACT::fluminurs.windows.exe ;;
+            *ubuntu*)  echo ::set-output name=ARTIFACT::fluminurs.ubuntu ;;
+            *macos*)   echo ::set-output name=ARTIFACT::fluminurs.macos ;;
+            *)         exit 1
           esac
         shell: bash
       - name: Compile

@@ -1,0 +1,65 @@
+on:
+  release:
+    types: [created]
+
+name: Build Release
+
+jobs:
+  build:
+    name: Rust ${{ matrix.rust }} / OS ${{ matrix.os }}
+    strategy:
+      fail-fast: true
+      matrix:
+        os: ['windows-latest', 'ubuntu-latest', 'macos-latest']
+        rust: ['1.48.0']
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+      - name: Update rust version
+        run: rustup update --no-self-update ${{ matrix.rust }} && rustup default ${{ matrix.rust}}
+      - name: Compile (Linux)
+        run: scripts/compile.linux.sh
+        if: ${{ contains(matrix.os, 'linux') }}
+      - name: Upload Release Asset (Linux)
+        id: upload-release-asset
+        if: ${{ contains(matrix.os, 'linux') }}
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: ./fluminurs.linux
+          asset_name: fluminurs.linux
+          asset_content_type: application/octet-stream
+      - name: Compile (Windows)
+        run: scripts/compile.windows.sh
+        shell: bash
+        if: ${{ contains(matrix.os, 'windows') }}
+      - name: Upload Release Asset (Windows)
+        id: upload-release-asset
+        if: ${{ contains(matrix.os, 'windows') }}
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: ./fluminurs.windows.exe
+          asset_name: fluminurs.windows.exe
+          asset_content_type: application/octet-stream
+      - name: Compile (macOS)
+        run: scripts/compile.mac.sh
+        if: ${{ contains(matrix.os, 'macos') }}
+      - name: Upload Release Asset (macOS)
+        id: upload-release-asset
+        if: ${{ contains(matrix.os, 'macos') }}
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: ./fluminurs.macos
+          asset_name: fluminurs.macos
+          asset_content_type: application/octet-stream

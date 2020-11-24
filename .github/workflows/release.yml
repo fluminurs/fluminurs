@@ -53,7 +53,7 @@ jobs:
         id: platform_artifact
         run: |
           case ${{ matrix.os }} in
-            *linux*)
+            *ubuntu*)
               echo ::set-output name=PLATFORM::linux ;
               echo ::set-output name=ARTIFACT::fluminurs.linux ;
               ;;

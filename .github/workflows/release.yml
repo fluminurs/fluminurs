@@ -53,12 +53,19 @@ jobs:
         id: platform_artifact
         run: |
           case ${{ matrix.os }} in
-            *linux*) platform=linux; artifact=fluminurs.linux;;
-            *macos*) platform=mac; artifact=fluminurs.macos;;
-            *windows*) platform=windows; artifact=fluminurs.windows.exe;;
+            *linux*)
+              echo ::set-output name=PLATFORM::linux ;
+              echo ::set-output name=ARTIFACT::fluminurs.linux ;
+              ;;
+            *macos*)
+              echo ::set-output name=PLATFORM::mac ;
+              echo ::set-output name=ARTIFACT::fluminurs.macos ;
+              ;;
+            *windows*)
+              echo ::set-output name=PLATFORM::windows;
+              echo ::set-output name=ARTIFACT::fluminurs.windows.exe ;
+              ;;
           esac
-          echo ::set-output name=PLATFORM::$platform
-          echo ::set-output name=ARTIFACT::$artifact
         shell: bash
       - name: Compile
         run: ./scripts/compile.${{ steps.platform_artifact.outputs.PLATFORM }}.sh

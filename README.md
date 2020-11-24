@@ -7,7 +7,6 @@ Feel free to fork this project, as it was released under the MIT license.
 
 # fluminurs
 
-[![Travis CIBuild Status](https://travis-ci.com/indocomsoft/fluminurs.svg?branch=master)](https://travis-ci.com/indocomsoft/fluminurs)
 ![Github Actions Build Status](https://github.com/indocomsoft/fluminurs/workflows/Rust/badge.svg)
 
 <sup><sub>F LumiNUS! IVLE ftw! Why fix what ain't broken?!</sub></sup>

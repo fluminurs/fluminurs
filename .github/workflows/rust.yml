@@ -16,7 +16,7 @@ jobs:
       fail-fast: true
       matrix:
         os: ['windows-latest', 'ubuntu-latest', 'macos-latest']
-        rust: ['1.47.0', '1.48.0']
+        rust: ['1.48.0']
 
     runs-on: ${{ matrix.os }}
 

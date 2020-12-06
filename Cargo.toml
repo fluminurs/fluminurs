@@ -25,7 +25,7 @@ rand = "0.7.3"
 reqwest = { version = "0.10.8", features = ["cookies", "json"] }
 rpassword = "5.0.0"
 sanitize-filename = "0.3.0"
-serde = { version = "1.0.117", features = ["derive"] }
+serde = { version = "1.0.118", features = ["derive"] }
 serde_json = "1.0.60"
 serde_urlencoded = "0.7"
 tokio = { version = "0.3.5", features = ["full"] }

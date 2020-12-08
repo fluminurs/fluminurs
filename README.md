@@ -1,9 +1,10 @@
-# Looking for new maintainer
-I am graduating at the end of this semester (December 2020 == AY2020/2021 Semester 1 == Fall 2020), and so I will most likely not have time to maintain nor the necessary access to test and dogfood the features.
-If you are interested in maintaining the project, do contact me at the email address I use to author the commits on this repository.
+# New maintainers
+I am graduating at the end of this semester (December 2020), so I will most likely not have time to maintain nor the necessary access to test and dogfood the features.
 
-If I can't find a new maintainer by the end of 2020, I will archive the project.
-Feel free to fork this project, as it was released under the MIT license.
+Fret not, for I have found new maintainers for this project, @angelsl and @jingyenloh!
+I have added them as collaborators in this repository, and they will shortly take over the maintenance of this repository.
+
+This is Julius, signing off.
 
 # fluminurs
 

@@ -240,11 +240,11 @@ impl Api {
             .term)
     }
 
-    pub async fn modules(&self, current_term_only: bool) -> Result<Vec<Module>> {
-        let current_term = if current_term_only {
-            Some(self.current_term().await?)
+    pub async fn modules(&self, term: Option<String>) -> Result<Vec<Module>> {
+        let specified_term = if let Some(specified_term) = term {
+            specified_term
         } else {
-            None
+            self.current_term().await?
         };
 
         let modules = self
@@ -252,14 +252,10 @@ impl Api {
             .await?;
 
         if let Data::Modules(modules) = modules.data {
-            if let Some(current_term) = current_term {
-                Ok(modules
-                    .into_iter()
-                    .filter(|m| m.term == current_term)
-                    .collect())
-            } else {
-                Ok(modules)
-            }
+            Ok(modules
+                .into_iter()
+                .filter(|m| m.term == specified_term)
+                .collect())
         } else if let Data::Empty(_) = modules.data {
             Ok(vec![])
         } else {

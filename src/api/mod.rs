@@ -259,10 +259,21 @@ impl Api {
 
         if let Data::Modules(modules) = modules.data {
             let iter = modules.into_iter();
-            Ok(match filter {
+            let mut selected_modules: Vec<Module> = match filter {
                 FilterMode::Equal(term) => iter.filter(|m| m.term == term).collect(),
                 FilterMode::GreaterThan(term) => iter.filter(|m| m.term >= term).collect(),
-            })
+            };
+            // sort by increasing module code, then by decreasing term
+            selected_modules.sort_unstable_by(|m1, m2| {
+                m1.code.cmp(&m2.code).then_with(|| m2.term.cmp(&m1.term))
+            });
+            selected_modules.dedup_by(|other, latest| if other.code == latest.code {
+                println!("Warning: module {} appeared in more than one semester, only latest semester will be retrieved", other.code);
+                true
+            } else {
+                false
+            });
+            Ok(selected_modules)
         } else if let Data::Empty(_) = modules.data {
             Ok(vec![])
         } else {

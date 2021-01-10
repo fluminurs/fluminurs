@@ -14,6 +14,8 @@ Elixir version, that can be ported over.
 
 Simply click [Releases](https://github.com/fluminurs/fluminurs/releases) and download the executable for your platform.
 
+There is also an AUR package: [fluminurs-bin](https://aur.archlinux.org/packages/fluminurs-bin/).
+
 ## Credits
 
 Originally written by [@indocomsoft](https://github.com/indocomsoft).

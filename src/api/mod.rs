@@ -241,10 +241,16 @@ impl Api {
     }
 
     pub async fn modules(&self, term: Option<String>) -> Result<Vec<Module>> {
-        let specified_term = if let Some(specified_term) = term {
-            specified_term
+        enum FilterMode {
+            GreaterThan(String),
+            Equal(String),
+        }
+        let filter = if let Some(specified_term) = term {
+            FilterMode::Equal(specified_term)
         } else {
-            self.current_term().await?
+            /* we want all modules for terms later than or equal to the current term,
+            because getting modules for future terms is useful when we are currently in a vacation week */
+            FilterMode::GreaterThan(self.current_term().await?)
         };
 
         let modules = self
@@ -252,10 +258,11 @@ impl Api {
             .await?;
 
         if let Data::Modules(modules) = modules.data {
-            Ok(modules
-                .into_iter()
-                .filter(|m| m.term == specified_term)
-                .collect())
+            let iter = modules.into_iter();
+            Ok(match filter {
+                FilterMode::Equal(term) => iter.filter(|m| m.term == term).collect(),
+                FilterMode::GreaterThan(term) => iter.filter(|m| m.term >= term).collect(),
+            })
         } else if let Data::Empty(_) = modules.data {
             Ok(vec![])
         } else {

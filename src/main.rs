@@ -140,8 +140,17 @@ async fn list_files(
     Ok(())
 }
 
-async fn download_file(api: &Api, file: File, path: PathBuf, overwrite_mode: &OverwriteMode) {
-    match file.download(api.clone(), &path, overwrite_mode).await {
+async fn download_file(
+    api: &Api,
+    file: File,
+    path: PathBuf,
+    temp_path: PathBuf,
+    overwrite_mode: OverwriteMode,
+) {
+    match file
+        .download(api.clone(), &path, &temp_path, overwrite_mode)
+        .await
+    {
         Ok(OverwriteResult::NewFile) => println!("Downloaded to {}", path.to_string_lossy()),
         Ok(OverwriteResult::AlreadyHave) => {}
         Ok(OverwriteResult::Skipped) => println!("Skipped {}", path.to_string_lossy()),
@@ -160,7 +169,7 @@ async fn download_files(
     modules: &[Module],
     destination: &str,
     include_uploadable_folders: ModuleTypeFlags,
-    overwrite_mode: &OverwriteMode,
+    overwrite_mode: OverwriteMode,
 ) -> Result<()> {
     println!("Download to {}", destination);
     let path = Path::new(destination).to_owned();
@@ -174,30 +183,35 @@ async fn download_files(
         .into_iter()
         .zip(std::iter::repeat(path))
         .collect::<Vec<_>>();
-    let mut files: Vec<(File, PathBuf)> = vec![];
+    let mut files: Vec<(File, PathBuf, PathBuf)> = vec![];
 
     while let Some((file, path)) = directories.pop() {
-        let path = path.join(file.name());
+        let real_path = path.join(file.name());
         if file.is_directory() {
             directories.append(
                 &mut file
                     .children()
                     .expect("Children should have been loaded")
                     .into_iter()
-                    .map(|child| (child, path.clone()))
+                    .map(|child| (child, real_path.clone()))
                     .collect(),
             );
         } else {
-            files.push((file, path));
+            let temp_path = path.join(make_temp_file_name(file.name()));
+            files.push((file, real_path, temp_path));
         }
     }
     future::join_all(
-        files
-            .into_iter()
-            .map(|(file, path)| download_file(api, file, path, overwrite_mode)),
+        files.into_iter().map(|(file, path, temp_path)| {
+            download_file(api, file, path, temp_path, overwrite_mode)
+        }),
     )
     .await;
     Ok(())
+}
+
+fn make_temp_file_name(name: &str) -> String {
+    format!("~!{}", name)
 }
 
 fn get_credentials(credential_file: &str) -> Result<(String, String)> {
@@ -372,7 +386,7 @@ async fn main() -> Result<()> {
             &modules,
             &destination,
             include_uploadable_folders,
-            &overwrite_mode,
+            overwrite_mode,
         )
         .await?;
     }

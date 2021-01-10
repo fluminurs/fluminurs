@@ -8,6 +8,7 @@ use serde::Deserialize;
 use tokio::io::AsyncWriteExt;
 
 use crate::api::{Api, ApiData, Data};
+use crate::Error;
 use crate::Result;
 
 #[derive(Debug, Deserialize)]
@@ -134,6 +135,7 @@ fn parse_time(time: &String) -> SystemTime {
     )
 }
 
+#[derive(Copy, Clone)]
 pub enum OverwriteMode {
     Skip,
     Overwrite,
@@ -147,6 +149,13 @@ pub enum OverwriteResult {
     Overwritten,
     Renamed { renamed_path: PathBuf },
 }
+
+enum RetryableError {
+    Retry(Error),
+    Fail(Error),
+}
+
+type RetryableResult<T> = std::result::Result<T, RetryableError>;
 
 impl File {
     pub fn name(&self) -> &str {
@@ -317,7 +326,7 @@ impl File {
     async fn prepare_path(
         &self,
         path: &Path,
-        overwrite: &OverwriteMode,
+        overwrite: OverwriteMode,
     ) -> Result<(bool, OverwriteResult)> {
         let metadata = tokio::fs::metadata(path).await;
         if let Err(e) = metadata {
@@ -382,7 +391,8 @@ impl File {
         &self,
         api: Api,
         destination: &Path,
-        overwrite: &OverwriteMode,
+        temp_destination: &Path,
+        overwrite: OverwriteMode,
     ) -> Result<OverwriteResult> {
         let (should_download, result) = self.prepare_path(destination, overwrite).await?;
         if should_download {
@@ -392,22 +402,67 @@ impl File {
                     .await
                     .map_err(|_| "Unable to create directory")?;
             };
-            let mut file = tokio::fs::File::create(destination)
-                .await
-                .map_err(|_| "Unable to open file")?;
-            let mut res = api
-                .get_client()
-                .get(download_url)
-                .send()
-                .await
-                .map_err(|_| "Failed during download")?;
-            while let Some(ref chunk) = res.chunk().await.map_err(|_| "Failed during streaming")? {
-                file.write_all(chunk)
-                    .await
-                    .map_err(|_| "Failed writing to disk")?;
-            }
+            Self::infinite_retry_download(&api, download_url, destination, temp_destination)
+                .await?;
             // Note: We should actually manually set the last updated time on the disk to the time fetched from server, otherwise there might be situations where we will miss an updated file.
         }
         Ok(result)
+    }
+
+    async fn infinite_retry_download(
+        api: &Api,
+        download_url: reqwest::Url,
+        destination: &Path,
+        temp_destination: &Path,
+    ) -> Result<()> {
+        loop {
+            let mut file = tokio::fs::File::create(temp_destination)
+                .await
+                .map_err(|e| {println!("{} {}", temp_destination.to_str().unwrap(), e); "Unable to open temporary file"})?;
+            match Self::download_chunks(&api, download_url.clone(), &mut file).await {
+                Ok(_) => {
+                    tokio::fs::rename(temp_destination, destination)
+                        .await
+                        .map_err(|_| "Unable to move temporary file")?;
+                    break;
+                }
+                Err(err) => {
+                    tokio::fs::remove_file(temp_destination)
+                        .await
+                        .map_err(|_| "Unable to delete temporary file")?;
+                    match err {
+                        RetryableError::Retry(_) => { /* retry */ }
+                        RetryableError::Fail(err) => {
+                            Err(err)?;
+                        }
+                    }
+                }
+            };
+        }
+        Ok(())
+    }
+
+    async fn download_chunks(
+        api: &Api,
+        download_url: reqwest::Url,
+        file: &mut tokio::fs::File,
+    ) -> RetryableResult<()> {
+        let mut res = api
+            .get_client()
+            .get(download_url)
+            .send()
+            .await
+            .map_err(|_| RetryableError::Retry("Failed during download"))?;
+        while let Some(chunk) = res
+            .chunk()
+            .await
+            .map_err(|_| RetryableError::Retry("Failed during streaming"))?
+            .as_deref()
+        {
+            file.write_all(chunk)
+                .await
+                .map_err(|_| RetryableError::Fail("Failed writing to disk"))?;
+        }
+        Ok(())
     }
 }

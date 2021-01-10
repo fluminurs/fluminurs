@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use reqwest::header::CONTENT_TYPE;
 use reqwest::redirect::Policy;
 use reqwest::Method;
+use reqwest::{header::CONTENT_TYPE, Certificate};
 use reqwest::{Client, RequestBuilder, Response, Url};
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
@@ -107,10 +107,16 @@ fn build_token_form<'a>(code: &'a str) -> HashMap<&'static str, &'a str> {
     map
 }
 
+fn hack_get_intermediate_cert() -> Result<Certificate> {
+    Certificate::from_pem(include_bytes!("DigiCert_TLS_RSA_SHA256_2020_CA1.pem"))
+        .map_err(|_| "Unable to load TLS intermediate certificate")
+}
+
 fn build_client() -> Result<Client> {
     Client::builder()
         .http1_title_case_headers()
         .cookie_store(true)
+        .add_root_certificate(hack_get_intermediate_cert()?)
         .redirect(Policy::custom(|attempt| {
             if attempt.previous().len() > 5 {
                 attempt.error("too many redirects")

@@ -247,6 +247,9 @@ fn confirm(prompt: &str) -> bool {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    #[cfg(feature = "with-env-logger")]
+    env_logger::init();
+
     let matches = App::new(PKG_NAME)
         .version(VERSION)
         .author(&*format!("{} and contributors", clap::crate_authors!(", ")))

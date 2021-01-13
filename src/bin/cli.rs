@@ -7,22 +7,16 @@ use std::path::{Path, PathBuf};
 use clap::{App, Arg};
 use futures_util::future;
 use serde::{Deserialize, Serialize};
-use tokio;
 
-use crate::api::module::{File, Module, OverwriteMode, OverwriteResult};
-use crate::api::Api;
+use fluminurs::module::{File, Module, OverwriteMode, OverwriteResult};
+use fluminurs::{Api, Result};
 
 #[macro_use]
 extern crate bitflags;
 
-type Error = &'static str;
-type Result<T> = std::result::Result<T, Error>;
-
 const PKG_NAME: &str = env!("CARGO_PKG_NAME");
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 const DESCRIPTION: &str = env!("CARGO_PKG_DESCRIPTION");
-
-mod api;
 
 #[derive(Serialize, Deserialize)]
 struct Login {

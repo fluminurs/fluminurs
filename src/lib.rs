@@ -8,11 +8,12 @@ use reqwest::{Client, RequestBuilder, Response, Url};
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
 
-use crate::Result;
-
 use self::module::{Announcement, Module};
 
 pub mod module;
+
+pub type Error = &'static str;
+pub type Result<T> = std::result::Result<T, Error>;
 
 const ADFS_OAUTH2_URL: &str = "https://vafs.nus.edu.sg/adfs/oauth2/authorize";
 const ADFS_CLIENT_ID: &str = "E10493A3B1024F14BDC7D0D8B9F649E9-234390";

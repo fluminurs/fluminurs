@@ -8,6 +8,13 @@ repository = "http://github.com/indocomsoft/fluminurs"
 readme = "README.md"
 license = "MIT"
 
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "fluminurs-cli"
+path = "src/bin/cli.rs"
+
 [features]
 default = []
 with-env-logger = ['env_logger']

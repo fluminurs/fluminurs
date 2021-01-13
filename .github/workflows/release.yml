@@ -53,9 +53,9 @@ jobs:
         id: artifact
         run: |
           case ${{ matrix.os }} in
-            *windows*) echo ::set-output name=ARTIFACT::fluminurs.windows.exe ;;
-            *ubuntu*)  echo ::set-output name=ARTIFACT::fluminurs.ubuntu ;;
-            *macos*)   echo ::set-output name=ARTIFACT::fluminurs.macos ;;
+            *windows*) echo ::set-output name=ARTIFACT::fluminurs-cli.windows.exe ;;
+            *ubuntu*)  echo ::set-output name=ARTIFACT::fluminurs-cli.ubuntu ;;
+            *macos*)   echo ::set-output name=ARTIFACT::fluminurs-cli.macos ;;
             *)         exit 1
           esac
         shell: bash

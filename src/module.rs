@@ -7,9 +7,7 @@ use reqwest::{Method, Url};
 use serde::Deserialize;
 use tokio::io::AsyncWriteExt;
 
-use crate::api::{Api, ApiData, Data};
-use crate::Error;
-use crate::Result;
+use crate::{Api, ApiData, Data, Error, Result};
 
 #[derive(Debug, Deserialize)]
 struct Access {

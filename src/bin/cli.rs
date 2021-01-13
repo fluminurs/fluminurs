@@ -325,7 +325,7 @@ async fn main() -> Result<()> {
                 include_flags
             }
         })
-        .unwrap_or(ModuleTypeFlags::empty());
+        .unwrap_or_else(ModuleTypeFlags::empty);
     let overwrite_mode = matches
         .value_of("updated")
         .map(|s| match s.to_lowercase().as_str() {

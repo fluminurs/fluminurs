@@ -126,7 +126,7 @@ fn sanitise_filename(name: String) -> String {
     }
 }
 
-fn parse_time(time: &String) -> SystemTime {
+fn parse_time(time: &str) -> SystemTime {
     SystemTime::from(
         chrono::DateTime::<chrono::FixedOffset>::parse_from_rfc3339(&time)
             .expect("Failed to parse last updated time"),

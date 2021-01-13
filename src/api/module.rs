@@ -418,7 +418,10 @@ impl File {
         loop {
             let mut file = tokio::fs::File::create(temp_destination)
                 .await
-                .map_err(|e| {println!("{} {}", temp_destination.to_str().unwrap(), e); "Unable to open temporary file"})?;
+                .map_err(|e| {
+                    println!("{} {}", temp_destination.to_str().unwrap(), e);
+                    "Unable to open temporary file"
+                })?;
             match Self::download_chunks(&api, download_url.clone(), &mut file).await {
                 Ok(_) => {
                     tokio::fs::rename(temp_destination, destination)

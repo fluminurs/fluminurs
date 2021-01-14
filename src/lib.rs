@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::sync::Arc;
 
 use reqwest::redirect::Policy;
 use reqwest::Method;
@@ -136,7 +135,7 @@ fn generate_random_bytes(size: usize) -> String {
 }
 
 async fn infinite_retry_http<F>(
-    client: Client,
+    client: &Client,
     url: Url,
     method: Method,
     form: Option<&HashMap<&str, &str>>,
@@ -154,14 +153,14 @@ where
     // LumiNUS randomly returns 400 to a perfectly good request for no apparent reason
     // We'll just ignore it and repeat the request
     let res = loop {
-        let mut request_builder = client.request(method.clone(), url.clone());
-        if let Some(ref form) = form {
-            request_builder = request_builder
+        let request_builder = client.request(method.clone(), url.clone());
+        let request_builder = if let Some(form) = &form {
+            request_builder
                 .body(form.clone())
-                .header(CONTENT_TYPE, "application/x-www-form-urlencoded");
+                .header(CONTENT_TYPE, "application/x-www-form-urlencoded")
         } else {
-            request_builder = request_builder.header(CONTENT_TYPE, "application/json");
-        }
+            request_builder.header(CONTENT_TYPE, "application/json")
+        };
         let request = edit_request(request_builder)
             .build()
             .map_err(|_| "Failed to build request")?;
@@ -175,7 +174,7 @@ where
 }
 
 async fn auth_http_post(
-    client: Client,
+    client: &Client,
     url: Url,
     form: Option<&HashMap<&str, &str>>,
     with_apim: bool,
@@ -192,8 +191,8 @@ async fn auth_http_post(
 
 #[derive(Debug, Clone)]
 pub struct Api {
-    pub jwt: Arc<String>,
-    pub client: Client,
+    jwt: String,
+    client: Client,
 }
 
 impl Api {
@@ -220,11 +219,10 @@ impl Api {
         form: Option<&HashMap<&str, &str>>,
     ) -> Result<Response> {
         let url = full_api_url(path);
-        let jwt = Arc::clone(&self.jwt);
 
-        infinite_retry_http(self.client.clone(), url, method, form, move |req| {
+        infinite_retry_http(&self.client, url, method, form, move |req| {
             req.header(OCP_APIM_SUBSCRIPTION_KEY_HEADER, OCP_APIM_SUBSCRIPTION_KEY)
-                .bearer_auth(jwt.clone())
+                .bearer_auth(self.jwt.as_str())
         })
         .await
     }
@@ -293,8 +291,7 @@ impl Api {
         let params = build_auth_form(username, password);
         let client = build_client()?;
 
-        let auth_resp =
-            auth_http_post(client.clone(), build_auth_url(), Some(&params), false).await?;
+        let auth_resp = auth_http_post(&client, build_auth_url(), Some(&params), false).await?;
         if !auth_resp.url().as_str().starts_with(ADFS_REDIRECT_URI) {
             return Err("Invalid credentials");
         }
@@ -304,9 +301,8 @@ impl Api {
             .find(|(key, _)| key == "code")
             .map(|(_key, code)| code.into_owned())
             .ok_or("Unknown authentication failure (no code returned)")?;
-        let client2 = client.clone();
         let token_resp = auth_http_post(
-            client2,
+            &client,
             full_api_url("login/adfstoken"),
             Some(&build_token_form(&code)),
             true,
@@ -320,7 +316,7 @@ impl Api {
             .await
             .map_err(|_| "Failed to deserialise token exchange response")?;
         Ok(Api {
-            jwt: Arc::new(token.access_token),
+            jwt: token.access_token,
             client,
         })
     }

@@ -175,7 +175,6 @@ impl File {
     pub async fn load_children(&self, api: &Api, include_uploadable: bool) -> Result<()> {
         debug_assert!(include_uploadable || !self.inner.allow_upload);
 
-        let apic = api.clone();
         if !self.inner.is_directory {
             return self
                 .inner
@@ -195,7 +194,7 @@ impl File {
         {
             return Ok(());
         }
-        let subdirs = apic
+        let subdirs = api
             .api_as_json::<ApiData>(
                 &format!("files/?ParentID={}", self.inner.id),
                 Method::GET,
@@ -221,7 +220,7 @@ impl File {
         };
 
         let allow_upload = self.inner.allow_upload;
-        let files = apic
+        let files = api
             .api_as_json::<ApiData>(
                 &format!(
                     "files/{}/file{}",
@@ -264,10 +263,8 @@ impl File {
             _ => vec![],
         };
 
-        let self_clone = self.clone();
         subdirs.append(&mut files);
-        self_clone
-            .inner
+        self.inner
             .children
             .write()
             .map(|mut ptr| {
@@ -277,7 +274,6 @@ impl File {
     }
 
     pub async fn load_all_children(&self, api: &Api, include_uploadable: bool) -> Result<()> {
-        let apic = api.clone();
         self.load_children(api, include_uploadable).await?;
 
         let mut files = vec![self.clone()];
@@ -285,7 +281,7 @@ impl File {
             for res in future::join_all(
                 files
                     .iter()
-                    .map(|file| file.load_children(&apic, include_uploadable)),
+                    .map(|file| file.load_children(api, include_uploadable)),
             )
             .await
             {
@@ -306,7 +302,7 @@ impl File {
         Ok(())
     }
 
-    pub async fn get_download_url(&self, api: Api) -> Result<Url> {
+    pub async fn get_download_url(&self, api: &Api) -> Result<Url> {
         let data = api
             .api_as_json::<ApiData>(
                 &format!("files/file/{}/downloadurl", self.inner.id),
@@ -387,21 +383,20 @@ impl File {
 
     pub async fn download(
         &self,
-        api: Api,
+        api: &Api,
         destination: &Path,
         temp_destination: &Path,
         overwrite: OverwriteMode,
     ) -> Result<OverwriteResult> {
         let (should_download, result) = self.prepare_path(destination, overwrite).await?;
         if should_download {
-            let download_url = self.get_download_url(api.clone()).await?;
+            let download_url = self.get_download_url(api).await?;
             if let Some(parent) = destination.parent() {
                 tokio::fs::create_dir_all(parent)
                     .await
                     .map_err(|_| "Unable to create directory")?;
             };
-            Self::infinite_retry_download(&api, download_url, destination, temp_destination)
-                .await?;
+            Self::infinite_retry_download(api, download_url, destination, temp_destination).await?;
             // Note: We should actually manually set the last updated time on the disk to the time fetched from server, otherwise there might be situations where we will miss an updated file.
         }
         Ok(result)

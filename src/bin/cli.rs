@@ -62,12 +62,10 @@ fn print_files(file: &File, prefix: &str) {
 }
 
 async fn print_announcements(api: &Api, modules: &[Module]) -> Result<()> {
-    let apic = api.clone();
-
     let module_announcements = future::join_all(
         modules
             .iter()
-            .map(|module| module.get_announcements(&apic, false)),
+            .map(|module| module.get_announcements(api, false)),
     )
     .await;
     for (module, announcements) in modules.iter().zip(module_announcements) {
@@ -95,8 +93,6 @@ async fn load_modules_files(
     modules: &[Module],
     include_uploadable_folders: ModuleTypeFlags,
 ) -> Result<Vec<File>> {
-    let apic = api.clone();
-
     let files = modules
         .iter()
         .filter(|module| module.has_access())
@@ -105,7 +101,7 @@ async fn load_modules_files(
 
     let errors = future::join_all(files.iter().map(|(file, is_teaching)| {
         file.load_all_children(
-            &apic,
+            api,
             include_uploadable_folders.contains(if is_teaching.to_owned() {
                 ModuleTypeFlags::TEACHING
             } else {
@@ -141,10 +137,7 @@ async fn download_file(
     temp_path: PathBuf,
     overwrite_mode: OverwriteMode,
 ) {
-    match file
-        .download(api.clone(), &path, &temp_path, overwrite_mode)
-        .await
-    {
+    match file.download(api, &path, &temp_path, overwrite_mode).await {
         Ok(OverwriteResult::NewFile) => println!("Downloaded to {}", path.to_string_lossy()),
         Ok(OverwriteResult::AlreadyHave) => {}
         Ok(OverwriteResult::Skipped) => println!("Skipped {}", path.to_string_lossy()),

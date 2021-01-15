@@ -1,8 +1,8 @@
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, RwLock};
 use std::time::SystemTime;
 
 use futures_util::future;
+use futures_util::future::{BoxFuture, FutureExt};
 use reqwest::{Method, Url};
 use serde::Deserialize;
 use tokio::io::AsyncWriteExt;
@@ -83,35 +83,43 @@ impl Module {
         }
     }
 
-    pub fn as_file(&self) -> File {
-        File {
-            inner: Arc::new(FileInner {
-                id: self.id.to_owned(),
-                name: sanitise_filename(self.code.to_owned()),
-                is_directory: true,
-                children: RwLock::new(None),
-                allow_upload: false,
-                last_updated: std::time::UNIX_EPOCH,
-            }),
+    pub fn workbin_root(&self) -> DirectoryHandle {
+        DirectoryHandle {
+            id: self.id.clone(),
+            name: sanitise_filename(&self.code),
+            allow_upload: false,
+            /* last_updated: std::time::UNIX_EPOCH, */
         }
     }
 }
 
-struct FileInner {
+pub struct DirectoryHandle {
     id: String,
     name: String,
-    is_directory: bool,
-    children: RwLock<Option<Vec<File>>>,
     allow_upload: bool,
+    /* last_updated: SystemTime, */
+}
+
+pub struct File {
+    id: String,
+    name: String,
     last_updated: SystemTime,
 }
 
-#[derive(Clone)]
-pub struct File {
-    inner: Arc<FileInner>,
+pub struct Directory {
+    /* id: String, */
+    name: String,
+    /* allow_upload: bool, */
+    /* last_updated: SystemTime, */
+    children: Vec<FSObject>,
 }
 
-fn sanitise_filename(name: String) -> String {
+pub enum FSObject {
+    File(File),
+    Directory(Directory),
+}
+
+fn sanitise_filename(name: &str) -> String {
     if cfg!(windows) {
         sanitize_filename::sanitize_with_options(
             name.trim(),
@@ -122,13 +130,13 @@ fn sanitise_filename(name: String) -> String {
             },
         )
     } else {
-        ["\0", "/"].iter().fold(name, |acc, x| acc.replace(x, "-"))
+        name.replace("\0", "-").replace("/", "-")
     }
 }
 
 fn parse_time(time: &str) -> SystemTime {
     SystemTime::from(
-        chrono::DateTime::<chrono::FixedOffset>::parse_from_rfc3339(&time)
+        chrono::DateTime::<chrono::FixedOffset>::parse_from_rfc3339(time)
             .expect("Failed to parse last updated time"),
     )
 }
@@ -155,157 +163,121 @@ enum RetryableError {
 
 type RetryableResult<T> = std::result::Result<T, RetryableError>;
 
-impl File {
-    pub fn name(&self) -> &str {
-        &self.inner.name
-    }
+impl DirectoryHandle {
+    pub fn load<'a>(
+        self,
+        api: &'a Api,
+        include_uploadable: bool,
+    ) -> BoxFuture<'a, Result<Directory>> {
+        debug_assert!(include_uploadable || !self.allow_upload);
 
-    pub fn is_directory(&self) -> bool {
-        self.inner.is_directory
-    }
+        async move {
+            let get_subdirs = || async {
+                let subdirs_resp = api
+                    .api_as_json::<ApiData>(
+                        &format!("files/?ParentID={}", self.id),
+                        Method::GET,
+                        None,
+                    )
+                    .await?;
+                match subdirs_resp.data {
+                    Data::ApiFileDirectory(subdirs) => future::join_all(
+                        subdirs
+                            .into_iter()
+                            .filter(|s| include_uploadable || !s.allow_upload.unwrap_or(false))
+                            .map(|s| DirectoryHandle {
+                                id: s.id,
+                                name: sanitise_filename(&s.name),
+                                allow_upload: s.allow_upload.unwrap_or(false),
+                                /* last_updated: parse_time(&s.last_updated_date), */
+                            })
+                            .map(|dh| dh.load(api, include_uploadable)),
+                    )
+                    .await
+                    .into_iter()
+                    .collect::<Result<Vec<_>>>(),
+                    _ => Ok(vec![]),
+                }
+            };
 
-    pub fn children(&self) -> Option<Vec<File>> {
-        self.inner
-            .children
-            .read()
-            .expect("Failed to lock mutex")
-            .clone()
-    }
-
-    pub async fn load_children(&self, api: &Api, include_uploadable: bool) -> Result<()> {
-        debug_assert!(include_uploadable || !self.inner.allow_upload);
-
-        if !self.inner.is_directory {
-            return self
-                .inner
-                .children
-                .write()
-                .map(|mut ptr| {
-                    *ptr = Some(Vec::new());
-                })
-                .map_err(|_| "Failed to acquire write lock on File");
-        }
-        if self
-            .inner
-            .children
-            .read()
-            .map(|children| children.is_some())
-            .unwrap_or(false)
-        {
-            return Ok(());
-        }
-        let subdirs = api
-            .api_as_json::<ApiData>(
-                &format!("files/?ParentID={}", self.inner.id),
-                Method::GET,
-                None,
-            )
-            .await?;
-        let mut subdirs = match subdirs.data {
-            Data::ApiFileDirectory(subdirs) => subdirs
-                .into_iter()
-                .filter(|s| include_uploadable || !s.allow_upload.unwrap_or(false))
-                .map(|s| File {
-                    inner: Arc::new(FileInner {
-                        id: s.id,
-                        name: sanitise_filename(s.name),
-                        is_directory: true,
-                        children: RwLock::new(None),
-                        allow_upload: s.allow_upload.unwrap_or(false),
-                        last_updated: parse_time(&s.last_updated_date),
-                    }),
-                })
-                .collect::<Vec<_>>(),
-            _ => vec![],
-        };
-
-        let allow_upload = self.inner.allow_upload;
-        let files = api
-            .api_as_json::<ApiData>(
-                &format!(
-                    "files/{}/file{}",
-                    self.inner.id,
-                    if self.inner.allow_upload {
-                        "?populate=Creator"
-                    } else {
-                        ""
-                    }
-                ),
-                Method::GET,
-                None,
-            )
-            .await?;
-        let mut files = match files.data {
-            Data::ApiFileDirectory(files) => files
-                .into_iter()
-                .map(|s| File {
-                    inner: Arc::new(FileInner {
-                        id: s.id,
-                        name: sanitise_filename(format!(
-                            "{}{}",
-                            if allow_upload {
-                                format!(
-                                    "{} - ",
-                                    s.creator_name.unwrap_or_else(|| "Unknown".to_string())
+            let get_files = || async {
+                let files_resp = api
+                    .api_as_json::<ApiData>(
+                        &format!(
+                            "files/{}/file{}",
+                            self.id,
+                            if self.allow_upload {
+                                "?populate=Creator"
+                            } else {
+                                ""
+                            }
+                        ),
+                        Method::GET,
+                        None,
+                    )
+                    .await?;
+                Result::<Vec<File>>::Ok(match files_resp.data {
+                    Data::ApiFileDirectory(files) => files
+                        .into_iter()
+                        .map(|s| File {
+                            id: s.id,
+                            name: if self.allow_upload {
+                                sanitise_filename(
+                                    format!(
+                                        "{} - {}",
+                                        s.creator_name.as_deref().unwrap_or_else(|| "Unknown"),
+                                        s.name.as_str()
+                                    )
+                                    .as_str(),
                                 )
                             } else {
-                                "".to_string()
+                                sanitise_filename(s.name.as_str())
                             },
-                            s.name
-                        )),
-                        is_directory: false,
-                        children: RwLock::new(Some(Vec::new())),
-                        allow_upload: false,
-                        last_updated: parse_time(&s.last_updated_date),
-                    }),
+                            last_updated: parse_time(&s.last_updated_date),
+                        })
+                        .collect::<Vec<_>>(),
+                    _ => vec![],
                 })
-                .collect::<Vec<_>>(),
-            _ => vec![],
-        };
+            };
 
-        subdirs.append(&mut files);
-        self.inner
-            .children
-            .write()
-            .map(|mut ptr| {
-                *ptr = Some(subdirs);
+            let (res_subdirs, res_files) = future::join(get_subdirs(), get_files()).await;
+            let subdirs = res_subdirs?;
+            let files = res_files?;
+
+            Ok(Directory {
+                /* id: self.id, */
+                name: self.name,
+                /* allow_upload: self.allow_upload, */
+                /* last_updated: self.last_updated, */
+                children: subdirs
+                    .into_iter()
+                    .map(FSObject::Directory)
+                    .chain(files.into_iter().map(FSObject::File))
+                    .collect(),
             })
-            .map_err(|_| "Failed to acquire write lock on File")
-    }
-
-    pub async fn load_all_children(&self, api: &Api, include_uploadable: bool) -> Result<()> {
-        self.load_children(api, include_uploadable).await?;
-
-        let mut files = vec![self.clone()];
-        loop {
-            for res in future::join_all(
-                files
-                    .iter()
-                    .map(|file| file.load_children(api, include_uploadable)),
-            )
-            .await
-            {
-                res?;
-            }
-            files = files
-                .into_iter()
-                .flat_map(|file| {
-                    file.children()
-                        .expect("Children must have been loaded")
-                        .into_iter()
-                })
-                .collect();
-            if files.is_empty() {
-                break;
-            }
         }
-        Ok(())
+        .boxed()
+    }
+}
+
+impl Directory {
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+    pub fn children(&self) -> &[FSObject] {
+        &self.children
+    }
+}
+
+impl File {
+    pub fn name(&self) -> &str {
+        &self.name
     }
 
     pub async fn get_download_url(&self, api: &Api) -> Result<Url> {
         let data = api
             .api_as_json::<ApiData>(
-                &format!("files/file/{}/downloadurl", self.inner.id),
+                &format!("files/file/{}/downloadurl", self.id),
                 Method::GET,
                 None,
             )
@@ -336,7 +308,7 @@ impl File {
             .unwrap()
             .modified()
             .map_err(|_| "File system does not support last modified time")?;
-        if self.inner.last_updated <= old_time {
+        if self.last_updated <= old_time {
             Ok((false, OverwriteResult::AlreadyHave)) // don't download, because we already have updated file
         } else {
             match overwrite {

@@ -8,7 +8,7 @@ use clap::{App, Arg};
 use futures_util::{future, stream, StreamExt};
 use serde::{Deserialize, Serialize};
 
-use fluminurs::module::{File, Module, OverwriteMode, OverwriteResult};
+use fluminurs::module::{Directory, FSObject, File, Module, OverwriteMode, OverwriteResult};
 use fluminurs::{Api, Result};
 
 #[macro_use]
@@ -51,13 +51,12 @@ fn get_password(prompt: &str) -> String {
     rpassword::read_password().expect("Unable to get non-echo input mode for password")
 }
 
-fn print_files(file: &File, prefix: &str) {
-    if file.is_directory() {
-        for child in file.children().expect("Children must have been loaded") {
-            print_files(&child, &format!("{}/{}", prefix, file.name()));
+fn print_files(dir: &Directory, prefix: &str) {
+    for fso in dir.children() {
+        match fso {
+            FSObject::File(f) => println!("{}/{}", prefix, f.name()),
+            FSObject::Directory(d) => print_files(d, &format!("{}/{}", prefix, d.name())),
         }
-    } else {
-        println!("{}/{}", prefix, file.name());
     }
 }
 
@@ -92,17 +91,17 @@ async fn load_modules_files(
     api: &Api,
     modules: &[Module],
     include_uploadable_folders: ModuleTypeFlags,
-) -> Result<Vec<File>> {
-    let files = modules
+) -> Result<Vec<Directory>> {
+    let root_dirs = modules
         .iter()
         .filter(|module| module.has_access())
-        .map(|module| (module.as_file(), module.is_teaching()))
+        .map(|module| (module.workbin_root(), module.is_teaching()))
         .collect::<Vec<_>>();
 
-    let errors = future::join_all(files.iter().map(|(file, is_teaching)| {
-        file.load_all_children(
+    let (dirs, errors) = future::join_all(root_dirs.into_iter().map(|(root_dir, is_teaching)| {
+        root_dir.load(
             api,
-            include_uploadable_folders.contains(if is_teaching.to_owned() {
+            include_uploadable_folders.contains(if is_teaching {
                 ModuleTypeFlags::TEACHING
             } else {
                 ModuleTypeFlags::TAKING
@@ -111,28 +110,32 @@ async fn load_modules_files(
     }))
     .await
     .into_iter()
-    .filter(Result::is_err);
+    .fold((vec![], vec![]), move |(mut ok, mut err), res| {
+        match res {
+            Ok(dir) => {
+                ok.push(dir);
+            }
+            Err(e) => {
+                err.push(e);
+            }
+        }
+        (ok, err)
+    });
     for e in errors {
-        println!("Failed loading module files: {}", e.unwrap_err());
+        println!("Failed loading module files: {}", e);
     }
-    Ok(files.into_iter().map(|(file, _)| file).collect::<Vec<_>>())
+    Ok(dirs)
 }
 
-async fn list_files(
-    api: &Api,
-    modules: &[Module],
-    include_uploadable_folders: ModuleTypeFlags,
-) -> Result<()> {
-    let files = load_modules_files(api, modules, include_uploadable_folders).await?;
-    for file in files {
-        print_files(&file, "");
+fn list_files(module_dirs: &[Directory]) {
+    for dir in module_dirs {
+        print_files(dir, "");
     }
-    Ok(())
 }
 
 async fn download_file(
     api: &Api,
-    file: File,
+    file: &File,
     path: PathBuf,
     temp_path: PathBuf,
     overwrite_mode: OverwriteMode,
@@ -153,9 +156,8 @@ async fn download_file(
 
 async fn download_files(
     api: &Api,
-    modules: &[Module],
+    module_dirs: &[Directory],
     destination: &str,
-    include_uploadable_folders: ModuleTypeFlags,
     overwrite_mode: OverwriteMode,
 ) -> Result<()> {
     println!("Download to {}", destination);
@@ -164,29 +166,29 @@ async fn download_files(
         return Err("Download destination does not exist or is not a directory");
     }
 
-    let files = load_modules_files(api, modules, include_uploadable_folders).await?;
-
-    let mut directories = files
-        .into_iter()
+    let mut directories = module_dirs
+        .iter()
         .zip(std::iter::repeat(path))
         .collect::<Vec<_>>();
-    let mut files: Vec<(File, PathBuf, PathBuf)> = vec![];
+    let mut files: Vec<(&File, PathBuf, PathBuf)> = vec![];
 
-    while let Some((file, path)) = directories.pop() {
-        let real_path = path.join(file.name());
-        if file.is_directory() {
-            directories.append(
-                &mut file
-                    .children()
-                    .expect("Children should have been loaded")
-                    .into_iter()
-                    .map(|child| (child, real_path.clone()))
-                    .collect(),
-            );
-        } else {
-            let temp_path = path.join(make_temp_file_name(file.name()));
-            files.push((file, real_path, temp_path));
-        }
+    while let Some((dir, path)) = directories.pop() {
+        let dir_path = path.join(dir.name());
+        directories.append(
+            &mut dir
+                .children()
+                .into_iter()
+                .filter_map(|fso| match fso {
+                    FSObject::File(f) => {
+                        let temp_path = dir_path.join(make_temp_file_name(f.name()));
+                        let real_path = dir_path.join(f.name());
+                        files.push((f, real_path, temp_path));
+                        None
+                    }
+                    FSObject::Directory(d) => Some((d, dir_path.clone())),
+                })
+                .collect(),
+        );
     }
 
     let download_batch_size = 64;
@@ -365,19 +367,16 @@ async fn main() -> Result<()> {
         print_announcements(&api, &modules).await?;
     }
 
-    if do_files {
-        list_files(&api, &modules, include_uploadable_folders).await?;
-    }
+    if do_files || download_destination.is_some() {
+        let module_dirs = load_modules_files(&api, &modules, include_uploadable_folders).await?;
 
-    if let Some(destination) = download_destination {
-        download_files(
-            &api,
-            &modules,
-            &destination,
-            include_uploadable_folders,
-            overwrite_mode,
-        )
-        .await?;
+        if do_files {
+            list_files(&module_dirs);
+        }
+
+        if let Some(destination) = download_destination {
+            download_files(&api, &module_dirs, &destination, overwrite_mode).await?;
+        }
     }
 
     Ok(())

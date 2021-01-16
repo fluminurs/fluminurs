@@ -195,12 +195,14 @@ async fn download_files(
             files.push((file, real_path, temp_path));
         }
     }
-    future::join_all(
-        files.into_iter().map(|(file, path, temp_path)| {
+
+    let download_batch_size = 64;
+    for batch in files.chunks(download_batch_size) {
+        future::join_all(batch.to_owned().into_iter().map(|(file, path, temp_path)| {
             download_file(api, file, path, temp_path, overwrite_mode)
-        }),
-    )
-    .await;
+        }))
+        .await;
+    }
     Ok(())
 }
 

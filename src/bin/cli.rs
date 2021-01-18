@@ -10,7 +10,10 @@ use clap::{App, Arg};
 use futures_util::{future, stream, StreamExt};
 use serde::{Deserialize, Serialize};
 
-use fluminurs::module::{DownloadableObject, File, Module, OverwriteMode, OverwriteResult};
+use fluminurs::file::File;
+use fluminurs::module::Module;
+use fluminurs::multimedia::Video;
+use fluminurs::resource::{OverwriteMode, OverwriteResult, Resource};
 use fluminurs::{Api, Result};
 
 #[macro_use]
@@ -88,7 +91,12 @@ async fn load_modules_files(
     let root_dirs = modules
         .iter()
         .filter(|module| module.has_access())
-        .map(|module| (module.workbin_root(), module.is_teaching()))
+        .map(|module| {
+            (
+                module.workbin_root(|code| Path::new(code).to_owned()),
+                module.is_teaching(),
+            )
+        })
         .collect::<Vec<_>>();
 
     let (files, errors) = future::join_all(root_dirs.into_iter().map(|(root_dir, is_teaching)| {
@@ -120,15 +128,47 @@ async fn load_modules_files(
     Ok(files)
 }
 
-fn list_files<T: DownloadableObject>(files: &[T]) {
-    for file in files {
-        println!("{}", file.path().display())
+async fn load_modules_multimedia(api: &Api, modules: &[Module]) -> Result<Vec<Video>> {
+    let multimedias = modules
+        .iter()
+        .filter(|module| module.has_access())
+        .map(|module| module.multimedia_root(|code| Path::new(code).join(Path::new("Multimedia"))))
+        .collect::<Vec<_>>();
+
+    let (files, errors) = future::join_all(
+        multimedias
+            .into_iter()
+            .map(|multimedia| multimedia.load(api)),
+    )
+    .await
+    .into_iter()
+    .fold((vec![], vec![]), move |(mut ok, mut err), res| {
+        match res {
+            Ok(mut dir) => {
+                ok.append(&mut dir);
+            }
+            Err(e) => {
+                err.push(e);
+            }
+        }
+        (ok, err)
+    });
+
+    for e in errors {
+        println!("Failed loading module multimedia: {}", e);
+    }
+    Ok(files)
+}
+
+fn list_resources<T: Resource>(resources: &[T]) {
+    for resource in resources {
+        println!("{}", resource.path().display())
     }
 }
 
-async fn download_file(
+async fn download_resource<T: Resource>(
     api: &Api,
-    file: &File,
+    file: &T,
     path: PathBuf,
     temp_path: PathBuf,
     overwrite_mode: OverwriteMode,
@@ -147,11 +187,12 @@ async fn download_file(
     }
 }
 
-async fn download_files(
+async fn download_resources<T: Resource>(
     api: &Api,
-    files: &[File],
+    files: &[T],
     destination: &str,
     overwrite_mode: OverwriteMode,
+    parallelism: usize,
 ) -> Result<()> {
     println!("Download to {}", destination);
     let dest_path = Path::new(destination);
@@ -159,16 +200,15 @@ async fn download_files(
         return Err("Download destination does not exist or is not a directory");
     }
 
-    let download_batch_size = 64;
     stream::iter(files.iter())
         .map(|file| {
             let temp_path = dest_path
                 .join(file.path().parent().unwrap())
                 .join(make_temp_file_name(file.path().file_name().unwrap()));
             let real_path = dest_path.join(file.path());
-            download_file(api, file, real_path, temp_path, overwrite_mode)
+            download_resource(api, file, real_path, temp_path, overwrite_mode)
         })
-        .buffer_unordered(download_batch_size)
+        .buffer_unordered(parallelism)
         .for_each(|_| future::ready(())) // do nothing, just complete the future
         .await;
 
@@ -244,6 +284,12 @@ async fn main() -> Result<()> {
                 .long("download-to")
                 .takes_value(true),
         )
+        .arg(Arg::with_name("list-multimedia").long("list-multimedia"))
+        .arg(
+            Arg::with_name("download-multimedia")
+                .long("download-multimedia-to")
+                .takes_value(true),
+        )
         .arg(
             Arg::with_name("credential-file")
                 .long("credential-file")
@@ -273,6 +319,15 @@ async fn main() -> Result<()> {
                 .value_name("term")
                 .number_of_values(1),
         )
+        .arg(
+            Arg::with_name("ffmpeg")
+                .long("ffmpeg")
+                .takes_value(true)
+                .value_name("ffmpeg-path")
+                .number_of_values(1)
+                .default_value("ffmpeg")
+                .help("Path to ffmpeg executable for downloading multimedia"),
+        )
         .get_matches();
     let credential_file = matches
         .value_of("credential-file")
@@ -281,6 +336,10 @@ async fn main() -> Result<()> {
     let do_announcements = matches.is_present("announcements");
     let do_files = matches.is_present("files");
     let download_destination = matches.value_of("download").map(|s| s.to_owned());
+    let do_multimedia = matches.is_present("list-multimedia");
+    let multimedia_download_destination = matches
+        .value_of("download-multimedia")
+        .map(|s| s.to_owned());
     let include_uploadable_folders = matches
         .values_of("include-uploadable")
         .map(|values| {
@@ -321,7 +380,9 @@ async fn main() -> Result<()> {
     let (username, password) =
         get_credentials(&credential_file).expect("Unable to get credentials");
 
-    let api = Api::with_login(&username, &password).await?;
+    let api = Api::with_login(&username, &password)
+        .await?
+        .with_ffmpeg(matches.value_of("ffmpeg").unwrap_or("ffmpeg").to_owned());
     if !Path::new(&credential_file).exists() {
         match store_credentials(&credential_file, &username, &password) {
             Ok(_) => (),
@@ -349,11 +410,23 @@ async fn main() -> Result<()> {
         let module_file = load_modules_files(&api, &modules, include_uploadable_folders).await?;
 
         if do_files {
-            list_files(&module_file);
+            list_resources(&module_file);
         }
 
         if let Some(destination) = download_destination {
-            download_files(&api, &module_file, &destination, overwrite_mode).await?;
+            download_resources(&api, &module_file, &destination, overwrite_mode, 64).await?;
+        }
+    }
+
+    if do_multimedia || multimedia_download_destination.is_some() {
+        let module_multimedia = load_modules_multimedia(&api, &modules).await?;
+
+        if do_files {
+            list_resources(&module_multimedia);
+        }
+
+        if let Some(destination) = multimedia_download_destination {
+            download_resources(&api, &module_multimedia, &destination, overwrite_mode, 4).await?;
         }
     }
 

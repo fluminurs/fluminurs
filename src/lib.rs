@@ -7,9 +7,13 @@ use reqwest::{Client, RequestBuilder, Response, Url};
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
 
-use self::module::{Announcement, Module};
+use self::module::Module;
 
+pub mod file;
 pub mod module;
+pub mod multimedia;
+pub mod resource;
+pub mod util;
 
 pub type Error = &'static str;
 pub type Result<T> = std::result::Result<T, Error>;
@@ -40,28 +44,8 @@ struct TermDetail {
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct ApiFileDirectory {
-    id: String,
-    name: String,
-    allow_upload: Option<bool>,
-    creator_name: Option<String>,
-    last_updated_date: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct ApiData {
-    data: Data,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(untagged)]
-enum Data {
-    Empty(Vec<[(); 0]>),
-    Modules(Vec<Module>),
-    Announcements(Vec<Announcement>),
-    ApiFileDirectory(Vec<ApiFileDirectory>),
-    Text(String),
+struct ApiData<T> {
+    data: Option<T>,
 }
 
 #[derive(Deserialize)]
@@ -193,6 +177,7 @@ async fn auth_http_post(
 pub struct Api {
     jwt: String,
     client: Client,
+    ffmpeg_path: String,
 }
 
 impl Api {
@@ -253,10 +238,10 @@ impl Api {
         };
 
         let modules = self
-            .api_as_json::<ApiData>("module", Method::GET, None)
+            .api_as_json::<ApiData<Vec<Module>>>("module", Method::GET, None)
             .await?;
 
-        if let Data::Modules(modules) = modules.data {
+        if let Some(modules) = modules.data {
             let iter = modules.into_iter();
             let mut selected_modules: Vec<Module> = match filter {
                 FilterMode::Equal(term) => iter.filter(|m| m.term == term).collect(),
@@ -273,8 +258,6 @@ impl Api {
                 false
             });
             Ok(selected_modules)
-        } else if let Data::Empty(_) = modules.data {
-            Ok(vec![])
         } else {
             Err("Invalid API response from server: type mismatch")
         }
@@ -318,6 +301,15 @@ impl Api {
         Ok(Api {
             jwt: token.access_token,
             client,
+            ffmpeg_path: String::new(),
         })
+    }
+
+    pub fn with_ffmpeg<S: Into<String>>(self: Api, ffmpeg_path: S) -> Api {
+        Api {
+            jwt: self.jwt,
+            client: self.client,
+            ffmpeg_path: ffmpeg_path.into(),
+        }
     }
 }

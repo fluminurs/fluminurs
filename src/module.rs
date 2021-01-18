@@ -86,37 +86,28 @@ impl Module {
     pub fn workbin_root(&self) -> DirectoryHandle {
         DirectoryHandle {
             id: self.id.clone(),
-            name: sanitise_filename(&self.code),
+            path: Path::new(&sanitise_filename(&self.code)).to_owned(),
             allow_upload: false,
             /* last_updated: std::time::UNIX_EPOCH, */
         }
     }
 }
 
+pub trait DownloadableObject {
+    fn path(&self) -> &Path;
+}
+
 pub struct DirectoryHandle {
     id: String,
-    name: String,
+    path: PathBuf,
     allow_upload: bool,
     /* last_updated: SystemTime, */
 }
 
 pub struct File {
     id: String,
-    name: String,
+    path: PathBuf,
     last_updated: SystemTime,
-}
-
-pub struct Directory {
-    /* id: String, */
-    name: String,
-    /* allow_upload: bool, */
-    /* last_updated: SystemTime, */
-    children: Vec<FSObject>,
-}
-
-pub enum FSObject {
-    File(File),
-    Directory(Directory),
 }
 
 fn sanitise_filename(name: &str) -> String {
@@ -164,11 +155,12 @@ enum RetryableError {
 type RetryableResult<T> = std::result::Result<T, RetryableError>;
 
 impl DirectoryHandle {
+    // loads all files recursively and returns a flattened list
     pub fn load<'a>(
         self,
         api: &'a Api,
         include_uploadable: bool,
-    ) -> BoxFuture<'a, Result<Directory>> {
+    ) -> BoxFuture<'a, Result<Vec<File>>> {
         debug_assert!(include_uploadable || !self.allow_upload);
 
         async move {
@@ -187,7 +179,7 @@ impl DirectoryHandle {
                             .filter(|s| include_uploadable || !s.allow_upload.unwrap_or(false))
                             .map(|s| DirectoryHandle {
                                 id: s.id,
-                                name: sanitise_filename(&s.name),
+                                path: self.path.join(Path::new(&sanitise_filename(&s.name))),
                                 allow_upload: s.allow_upload.unwrap_or(false),
                                 /* last_updated: parse_time(&s.last_updated_date), */
                             })
@@ -195,7 +187,8 @@ impl DirectoryHandle {
                     )
                     .await
                     .into_iter()
-                    .collect::<Result<Vec<_>>>(),
+                    .collect::<Result<Vec<_>>>()
+                    .map(|v| v.into_iter().flatten().collect()),
                     _ => Ok(vec![]),
                 }
             };
@@ -221,7 +214,7 @@ impl DirectoryHandle {
                         .into_iter()
                         .map(|s| File {
                             id: s.id,
-                            name: if self.allow_upload {
+                            path: self.path.join(if self.allow_upload {
                                 sanitise_filename(
                                     format!(
                                         "{} - {}",
@@ -232,7 +225,7 @@ impl DirectoryHandle {
                                 )
                             } else {
                                 sanitise_filename(s.name.as_str())
-                            },
+                            }),
                             last_updated: parse_time(&s.last_updated_date),
                         })
                         .collect::<Vec<_>>(),
@@ -241,39 +234,22 @@ impl DirectoryHandle {
             };
 
             let (res_subdirs, res_files) = future::join(get_subdirs(), get_files()).await;
-            let subdirs = res_subdirs?;
-            let files = res_files?;
+            let mut files = res_subdirs?;
+            files.append(&mut res_files?);
 
-            Ok(Directory {
-                /* id: self.id, */
-                name: self.name,
-                /* allow_upload: self.allow_upload, */
-                /* last_updated: self.last_updated, */
-                children: subdirs
-                    .into_iter()
-                    .map(FSObject::Directory)
-                    .chain(files.into_iter().map(FSObject::File))
-                    .collect(),
-            })
+            Ok(files)
         }
         .boxed()
     }
 }
 
-impl Directory {
-    pub fn name(&self) -> &str {
-        &self.name
-    }
-    pub fn children(&self) -> &[FSObject] {
-        &self.children
+impl DownloadableObject for File {
+    fn path(&self) -> &Path {
+        &self.path
     }
 }
 
 impl File {
-    pub fn name(&self) -> &str {
-        &self.name
-    }
-
     pub async fn get_download_url(&self, api: &Api) -> Result<Url> {
         let data = api
             .api_as_json::<ApiData>(

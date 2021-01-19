@@ -34,6 +34,7 @@ bitflags = "1.2.1"
 chrono = "0.4.15"
 clap = { version = "2.33.3", optional = true }
 env_logger = { version = "0.8.2", optional = true }
+filetime = "0.2"
 futures-util = "0.3"
 htmlescape = "0.3.1"
 rand = "0.8.0"

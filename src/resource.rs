@@ -72,7 +72,15 @@ pub async fn do_retryable_download<
             download_file,
         )
         .await?;
-        // Note: We should actually manually set the last updated time on the disk to the time fetched from server, otherwise there might be situations where we will miss an updated file.
+
+        // set the last modified time manually to the time we got from the server,
+        // so that in case our local machine has unsynced time, or the file got updated while we are downloading it,
+        // we will be able to update the file the next time we attempt to download it
+        filetime::set_file_mtime(
+            destination,
+            filetime::FileTime::from_system_time(last_updated),
+        )
+        .map_err(|_| "Unable to set last modified time")?;
     }
     Ok(result)
 }

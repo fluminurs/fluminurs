@@ -5,7 +5,7 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
 use clap::{App, Arg};
-use futures_util::future;
+use futures_util::{future, stream, StreamExt};
 use serde::{Deserialize, Serialize};
 
 use fluminurs::module::{File, Module, OverwriteMode, OverwriteResult};
@@ -195,12 +195,14 @@ async fn download_files(
             files.push((file, real_path, temp_path));
         }
     }
-    future::join_all(
-        files.into_iter().map(|(file, path, temp_path)| {
-            download_file(api, file, path, temp_path, overwrite_mode)
-        }),
-    )
-    .await;
+
+    let download_batch_size = 64;
+    stream::iter(files.into_iter())
+        .map(|(file, path, temp_path)| download_file(api, file, path, temp_path, overwrite_mode))
+        .buffer_unordered(download_batch_size)
+        .for_each(|_| future::ready(())) // do nothing, just complete the future
+        .await;
+
     Ok(())
 }
 

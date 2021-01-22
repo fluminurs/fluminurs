@@ -443,7 +443,7 @@ async fn main() -> Result<()> {
     let (username, password) =
         get_credentials(&credential_file).expect("Unable to get credentials");
 
-    let api = Api::with_login(&username, &password)
+    let mut api = Api::with_login(&username, &password)
         .await?
         .with_ffmpeg(matches.value_of("ffmpeg").unwrap_or("ffmpeg").to_owned());
     if !Path::new(&credential_file).exists() {

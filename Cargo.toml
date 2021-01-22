@@ -36,8 +36,10 @@ clap = { version = "2.33", optional = true }
 env_logger = { version = "0.8", optional = true }
 filetime = "0.2"
 futures-util = "0.3"
+<<<<<<< HEAD
 htmlescape = "0.3"
 rand = "0.8"
+regex = "1.4"
 reqwest = { version = "0.11", features = ["cookies", "json"] }
 rpassword = { version = "5.0", optional = true }
 sanitize-filename = "0.3"

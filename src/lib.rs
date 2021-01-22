@@ -10,6 +10,7 @@ use serde::Deserialize;
 
 use self::module::Module;
 
+pub mod conferencing;
 pub mod file;
 pub mod module;
 pub mod multimedia;

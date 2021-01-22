@@ -10,6 +10,7 @@ use clap::{App, Arg};
 use futures_util::{future, stream, StreamExt};
 use serde::{Deserialize, Serialize};
 
+use fluminurs::conferencing::ZoomRecording;
 use fluminurs::file::File;
 use fluminurs::module::Module;
 use fluminurs::multimedia::ExternalVideo;
@@ -213,6 +214,40 @@ async fn load_modules_weblectures(api: &Api, modules: &[Module]) -> Result<Vec<W
     Ok(files)
 }
 
+async fn load_modules_conferences(api: &Api, modules: &[Module]) -> Result<Vec<ZoomRecording>> {
+    let conferences = modules
+        .iter()
+        .filter(|module| module.has_access())
+        .map(|module| {
+            module.conferencing_root(|code| Path::new(code).join(Path::new("Conferences")))
+        })
+        .collect::<Vec<_>>();
+
+    let (zoom_recordings, errors) = future::join_all(
+        conferences
+            .into_iter()
+            .map(|conference| conference.load(api)),
+    )
+    .await
+    .into_iter()
+    .fold((vec![], vec![]), move |(mut ok, mut err), res| {
+        match res {
+            Ok(mut dir) => {
+                ok.append(&mut dir);
+            }
+            Err(e) => {
+                err.push(e);
+            }
+        }
+        (ok, err)
+    });
+
+    for e in errors {
+        println!("Failed loading module conferences: {}", e);
+    }
+    Ok(zoom_recordings)
+}
+
 fn list_resources<T: Resource>(resources: &[T]) {
     for resource in resources {
         println!("{}", resource.path().display())
@@ -349,6 +384,12 @@ async fn main() -> Result<()> {
                 .long("download-weblectures-to")
                 .takes_value(true),
         )
+        .arg(Arg::with_name("list-conferences").long("list-conferences"))
+        .arg(
+            Arg::with_name("download-conferences")
+                .long("download-conferences-to")
+                .takes_value(true),
+        )
         .arg(
             Arg::with_name("credential-file")
                 .long("credential-file")
@@ -402,6 +443,10 @@ async fn main() -> Result<()> {
     let do_weblectures = matches.is_present("list-weblectures");
     let weblectures_download_destination = matches
         .value_of("download-weblectures")
+        .map(|s| s.to_owned());
+    let do_conferences = matches.is_present("list-conferences");
+    let conferences_download_destination = matches
+        .value_of("download-conferences")
         .map(|s| s.to_owned());
     let include_uploadable_folders = matches
         .values_of("include-uploadable")
@@ -515,7 +560,7 @@ async fn main() -> Result<()> {
             external_result?;
         }
     }
-
+    
     if do_weblectures || weblectures_download_destination.is_some() {
         let module_weblectures = load_modules_weblectures(&api, &modules).await?;
 
@@ -525,6 +570,18 @@ async fn main() -> Result<()> {
 
         if let Some(destination) = weblectures_download_destination {
             download_resources(&api, &module_weblectures, &destination, overwrite_mode, 4).await?;
+        }
+    }
+
+    if do_conferences || conferences_download_destination.is_some() {
+        let module_conferences = load_modules_conferences(&api, &modules).await?;
+
+        if do_conferences {
+            list_resources(&module_conferences);
+        }
+
+        if let Some(destination) = conferences_download_destination {
+            download_resources(&api, &module_conferences, &destination, overwrite_mode, 1).await?;
         }
     }
 

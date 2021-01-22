@@ -36,7 +36,6 @@ clap = { version = "2.33", optional = true }
 env_logger = { version = "0.8", optional = true }
 filetime = "0.2"
 futures-util = "0.3"
-<<<<<<< HEAD
 htmlescape = "0.3"
 rand = "0.8"
 regex = "1.4"

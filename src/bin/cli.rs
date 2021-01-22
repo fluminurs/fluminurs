@@ -421,7 +421,7 @@ async fn main() -> Result<()> {
     if do_multimedia || multimedia_download_destination.is_some() {
         let module_multimedia = load_modules_multimedia(&api, &modules).await?;
 
-        if do_files {
+        if do_multimedia {
             list_resources(&module_multimedia);
         }
 

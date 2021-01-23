@@ -23,6 +23,7 @@ struct Conference {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct CloudRecord {
+    code: Option<u32>,
     record_instances: Option<Vec<CloudRecordInstance>>,
 }
 
@@ -51,9 +52,7 @@ impl ConferencingHandle {
         ConferencingHandle { id, path }
     }
 
-    // loads all (non-external) multimedia recursively
-    // (I have no idea what external multimedia does, and I don't have a module to test it anyway)
-    // it appears that there can't be nested directories for multimedia
+    // loads all conferences
     pub async fn load(self, api: &Api) -> Result<Vec<ZoomRecording>> {
         let conferencing_resp = api
             .api_as_json::<ApiData<Vec<Conference>>>(
@@ -89,13 +88,18 @@ async fn load_cloud_record(
     conference: Conference,
     path: &Path,
 ) -> Result<Vec<ZoomRecording>> {
-    let cloud_record = api
-        .api_as_json::<CloudRecord>(
-            &format!("zoom/Meeting/{}/cloudrecord", conference.id),
-            Method::GET,
-            None,
-        )
-        .await?;
+    // Note: Sometimes, we get back {"code":400,"status":"fail","message":"TooManyRequests"}
+    // which is probably similar to the comment in infinite_retry_http, but only now it is not a HTTP error code.
+    // When this happens, we should retry until succeeded.
+    let request_path = format!("zoom/Meeting/{}/cloudrecord", conference.id);
+    let cloud_record = loop {
+        let cloud_record = api
+            .api_as_json::<CloudRecord>(&request_path, Method::GET, None)
+            .await?;
+        if cloud_record.code != Some(400) {
+            break cloud_record;
+        }
+    };
 
     let start_date = parse_time(&conference.start_date);
 

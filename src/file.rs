@@ -18,6 +18,7 @@ use crate::{Api, ApiData, Result};
 struct ApiFileDirectory {
     id: String,
     name: String,
+    file_name: Option<String>,
     allow_upload: Option<bool>,
     creator_name: Option<String>,
     last_updated_date: String,
@@ -104,17 +105,21 @@ impl DirectoryHandle {
                         .into_iter()
                         .map(|s| File {
                             id: s.id,
-                            path: self.path.join(if self.allow_upload {
-                                sanitise_filename(
-                                    format!(
-                                        "{} - {}",
-                                        s.creator_name.as_deref().unwrap_or_else(|| "Unknown"),
-                                        s.name.as_str()
+                            path: self.path.join({
+                                let name_for_download =
+                                    s.file_name.as_deref().unwrap_or(s.name.as_str());
+                                if self.allow_upload {
+                                    sanitise_filename(
+                                        format!(
+                                            "{} - {}",
+                                            s.creator_name.as_deref().unwrap_or_else(|| "Unknown"),
+                                            name_for_download
+                                        )
+                                        .as_str(),
                                     )
-                                    .as_str(),
-                                )
-                            } else {
-                                sanitise_filename(s.name.as_str())
+                                } else {
+                                    sanitise_filename(name_for_download)
+                                }
                             }),
                             last_updated: parse_time(&s.last_updated_date),
                         })

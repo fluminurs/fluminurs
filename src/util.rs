@@ -11,7 +11,7 @@ pub fn sanitise_filename(name: &str) -> String {
             },
         )
     } else {
-        name.replace("\0", "-").replace("/", "-")
+        name.trim().replace("\0", "-").replace("/", "-")
     }
 }
 

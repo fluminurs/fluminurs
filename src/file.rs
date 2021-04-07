@@ -165,6 +165,10 @@ impl Resource for File {
 }
 
 impl File {
+    pub fn last_updated(&self) -> SystemTime {
+        self.last_updated
+    }
+
     pub async fn get_download_url(&self, api: &Api) -> Result<Url> {
         let data = api
             .api_as_json::<ApiData<String>>(

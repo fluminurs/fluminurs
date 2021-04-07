@@ -99,16 +99,32 @@ async fn load_modules_files(
         })
         .collect::<Vec<_>>();
 
-    let (files, errors) = future::join_all(root_dirs.into_iter().map(|(root_dir, is_teaching)| {
-        root_dir.load(
-            api,
-            include_uploadable_folders.contains(if is_teaching {
-                ModuleTypeFlags::TEACHING
-            } else {
-                ModuleTypeFlags::TAKING
-            }),
-        )
-    }))
+    let (files, errors) = future::join_all(root_dirs.into_iter().map(
+        |(root_dir, is_teaching)| async move {
+            root_dir
+                .load(
+                    api,
+                    include_uploadable_folders.contains(if is_teaching {
+                        ModuleTypeFlags::TEACHING
+                    } else {
+                        ModuleTypeFlags::TAKING
+                    }),
+                )
+                .await
+                .map(|mut files| {
+                    // this map() is a (temporary) fix for #639 to avoid file corruption;
+                    // we keep only the last updated file if multiple files have the same name
+                    files.sort_unstable_by(|file1, file2| {
+                        file1
+                            .path()
+                            .cmp(file2.path())
+                            .then_with(|| file1.last_updated().cmp(&file2.last_updated()).reverse())
+                    });
+                    files.dedup_by(|file1, file2| file1.path() == file2.path());
+                    files
+                })
+        },
+    ))
     .await
     .into_iter()
     .fold((vec![], vec![]), move |(mut ok, mut err), res| {

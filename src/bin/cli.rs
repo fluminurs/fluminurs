@@ -112,15 +112,9 @@ async fn load_modules_files(
                 )
                 .await
                 .map(|mut files| {
-                    // this map() is a (temporary) fix for #639 to avoid file corruption;
-                    // we keep only the last updated file if multiple files have the same name
-                    files.sort_unstable_by(|file1, file2| {
-                        file1
-                            .path()
-                            .cmp(file2.path())
-                            .then_with(|| file1.last_updated().cmp(&file2.last_updated()).reverse())
-                    });
-                    files.dedup_by(|file1, file2| file1.path() == file2.path());
+                    // to avoid duplicate files from being corrupted,
+                    // we append the id to duplicate files
+                    fluminurs::file::sort_and_make_all_paths_unique(&mut files);
                     files
                 })
         },

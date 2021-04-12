@@ -99,16 +99,26 @@ async fn load_modules_files(
         })
         .collect::<Vec<_>>();
 
-    let (files, errors) = future::join_all(root_dirs.into_iter().map(|(root_dir, is_teaching)| {
-        root_dir.load(
-            api,
-            include_uploadable_folders.contains(if is_teaching {
-                ModuleTypeFlags::TEACHING
-            } else {
-                ModuleTypeFlags::TAKING
-            }),
-        )
-    }))
+    let (files, errors) = future::join_all(root_dirs.into_iter().map(
+        |(root_dir, is_teaching)| async move {
+            root_dir
+                .load(
+                    api,
+                    include_uploadable_folders.contains(if is_teaching {
+                        ModuleTypeFlags::TEACHING
+                    } else {
+                        ModuleTypeFlags::TAKING
+                    }),
+                )
+                .await
+                .map(|mut files| {
+                    // to avoid duplicate files from being corrupted,
+                    // we append the id to duplicate files
+                    fluminurs::file::sort_and_make_all_paths_unique(&mut files);
+                    files
+                })
+        },
+    ))
     .await
     .into_iter()
     .fold((vec![], vec![]), move |(mut ok, mut err), res| {

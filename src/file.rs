@@ -223,7 +223,7 @@ pub fn sort_and_make_all_paths_unique(files: &mut [File]) {
             file.path.set_file_name({
                 let mut new_name = file.path.file_stem().map_or_else(OsString::new, |n| {
                     let mut new_name = n.to_owned();
-                    new_name.push("-");
+                    new_name.push("_");
                     new_name
                 });
                 new_name.push(&file.id);

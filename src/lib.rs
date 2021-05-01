@@ -2,7 +2,8 @@ use std::collections::HashMap;
 
 use reqwest::redirect::Policy;
 use reqwest::Method;
-use reqwest::{header::CONTENT_TYPE, Certificate};
+use reqwest::header::{CONTENT_TYPE, USER_AGENT};
+use reqwest::Certificate;
 use reqwest::{Client, RequestBuilder, Response, Url};
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
@@ -14,6 +15,7 @@ pub mod module;
 pub mod multimedia;
 pub mod resource;
 pub mod util;
+pub mod weblecture;
 
 pub type Error = &'static str;
 pub type Result<T> = std::result::Result<T, Error>;
@@ -183,6 +185,41 @@ pub struct Api {
 impl Api {
     pub fn get_client(&self) -> &Client {
         &self.client
+    }
+
+    pub async fn get_html(
+        &self,
+        url: &str,
+        method: Method,
+        form: Option<&HashMap<String, String>>,
+    ) -> Result<String> {
+        let request_builder = self.get_client().request(method.clone(), url.clone());
+
+        let form = if let Some(form) = form {
+            Some(serde_urlencoded::to_string(form).map_err(|_| "Failed to serialise HTTP form")?)
+        } else {
+            None
+        };
+
+        let request_builder = if let Some(form) = &form {
+            request_builder
+                .body(form.clone())
+                .header(CONTENT_TYPE, "application/x-www-form-urlencoded")
+                // Panapto displays a 500 internal server error page without a desktop user-agent
+                .header(USER_AGENT, "Mozilla/5.0 (X11; Linux x86_64; rv:88.0) Gecko/20100101 Firefox/88.0")
+        } else {
+            request_builder
+        };
+
+        let request = request_builder
+            .build()
+            .map_err(|_| "Failed to build request")?;
+
+        let res = self.get_client().execute(request).await.map_err(|_| "HTTP error")?;
+
+        res.text()
+            .await
+            .map_err(|_| "Unable to get text")
     }
 
     async fn api_as_json<T: DeserializeOwned + 'static>(

@@ -5,11 +5,11 @@ use std::time::SystemTime;
 use async_trait::async_trait;
 use futures_util::future;
 use reqwest::{Method, Url};
+use scraper::{Html, Selector};
 use serde::Deserialize;
-use tokio::process::Command;
 
-use crate::resource;
-use crate::resource::{OverwriteMode, OverwriteResult, Resource, RetryableError, RetryableResult};
+use crate::{file::File, resource};
+use crate::resource::{OverwriteMode, OverwriteResult, Resource};
 use crate::util::{parse_time, sanitise_filename};
 use crate::{Api, ApiData, Result};
 
@@ -49,8 +49,7 @@ pub struct WebLectureHandle {
 }
 
 pub struct WebLectureVideo {
-    // TODO: replace with URL?
-    video_url: String,
+    video_url: Url,
     path: PathBuf,
     last_updated: SystemTime,
 }
@@ -122,22 +121,34 @@ impl WebLectureHandle {
                     .get_html(&url.to_string(), Method::POST, Some(&form))
                     .await?;
 
-                // TODO: parse HTML, extract video URL
-                println!("{}", &html[0..500]);
+                let video_url = Self::extract_video_url_from_document(&html);
 
-                Ok(WebLectureVideo {
-                    video_url: "".to_string(),
-                    path: path.join(Self::make_mp4_extension(Path::new(
-                        &sanitise_filename(&weblecture.name),
-                    ))),
-                    last_updated: parse_time(&weblecture.last_updated_date),
-                })
+                match video_url {
+                    Some(url) => Ok(WebLectureVideo {
+                        video_url: Url::parse(&url).expect("Unable to parse video URL"),
+                        path: path.join(Self::make_mp4_extension(Path::new(
+                            &sanitise_filename(&weblecture.name),
+                        ))),
+                        last_updated: parse_time(&weblecture.last_updated_date),
+                    }),
+                    None => Err("Unable to parse HTML"),
+                }
             },
             None => Err("Invalid API response from server: type mismatch"),
         }
     }
 
-    // TODO: check file extension
+    fn extract_video_url_from_document(html: &str) -> Option<String> {
+        let document = Html::parse_document(html);
+        let selector = Selector::parse(r#"meta[property="og:video"]"#).unwrap();
+
+        match document.select(&selector).next() {
+            Some(element) => element.value().attr("content").map(|x| x.to_string()),
+            None => None,
+        }
+    }
+
+    // TODO: check file extension?
     fn make_mp4_extension(path: &Path) -> PathBuf {
         path.with_extension("mp4")
     }
@@ -163,37 +174,11 @@ impl Resource for WebLectureVideo {
             overwrite,
             self.last_updated,
             // TODO: update.
-            move |_| future::ready(Ok(self.video_url.as_str())),
-            move |api, stream_url_path, temp_destination| {
-                Self::stream_video(api, stream_url_path, temp_destination)
+            move |_| future::ready(Ok(self.video_url.clone())),
+            move |api, video_url, temp_destination| {
+                File::download_chunks(api, video_url, temp_destination)
             },
         )
         .await
-    }
-}
-
-impl WebLectureVideo {
-    async fn stream_video(
-        api: &Api,
-        stream_url_path: &str,
-        temp_destination: &Path,
-    ) -> RetryableResult<()> {
-        let success = Command::new(&api.ffmpeg_path)
-            .arg("-y") // flag to overwrite output file without prompting
-            .arg("-i")
-            .arg(stream_url_path)
-            .arg("-c")
-            .arg("copy")
-            .arg(temp_destination.as_os_str())
-            .output()
-            .await
-            .map_err(|_| RetryableError::Fail("Failed to start ffmpeg"))?
-            .status
-            .success();
-        if success {
-            Ok(())
-        } else {
-            Err(RetryableError::Retry("ffmpeg returned nonzero exit code"))
-        }
     }
 }

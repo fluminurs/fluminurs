@@ -181,7 +181,7 @@ impl File {
         }
     }
 
-    async fn download_chunks(
+    pub async fn download_chunks(
         api: &Api,
         download_url: reqwest::Url,
         temp_destination: &Path,

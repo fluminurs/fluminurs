@@ -150,10 +150,10 @@ impl WebLectureVideo {
             Some(query_params) => {
                 let url = Url::parse(&query_params.launchURL).map_err(|_| "Unable to parse web lecture URL")?;
 
-                let mut form = HashMap::new();
+                let mut form: HashMap<&str, &str> = HashMap::new();
                 query_params.data_items
-                    .into_iter()
-                    .for_each(|item| { form.insert(item.key.to_string(), item.value.to_string()); });
+                    .iter()
+                    .for_each(|item| { form.insert(&item.key, &item.value); });
 
                 let html = api
                     .get_html(&url.to_string(), Method::POST, Some(&form))

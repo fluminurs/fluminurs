@@ -26,7 +26,8 @@ struct Media {
     /* id: String, */
     name: String,
     last_updated_date: String,
-    stream_url_path: String, // used to download the stream
+    // used to download the stream
+    stream_url_path: Option<String>, // Not all multimedia items are videos
 }
 
 pub struct MultimediaHandle {
@@ -86,8 +87,9 @@ impl MultimediaHandle {
         match channel_resp.data {
             Some(medias) => Ok(medias
                 .into_iter()
+                .filter(|m| m.stream_url_path.is_some())
                 .map(|m| Video {
-                    stream_url_path: m.stream_url_path,
+                    stream_url_path: m.stream_url_path.unwrap(),
                     path: channel_path.join(Self::make_mkv_extension(Path::new(
                         &sanitise_filename(&m.name),
                     ))),

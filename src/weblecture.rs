@@ -35,7 +35,7 @@ struct PanoptoRequestConstructionDetails {
     data_items: Vec<PanoptoQueryParameter>,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct PanoptoQueryParameter {
     key: String,

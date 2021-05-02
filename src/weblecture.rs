@@ -137,7 +137,7 @@ impl WebLectureVideo {
     async fn get_download_url(&self, api: &Api) -> Result<Url> {
         let query_params_resp = api
             .api_as_json::<Option<PanoptoRequestConstructionDetails>>(
-                &format!("lti/Launch/panopto?context_id={}&resource_link_id={}&returnURL=https://luminus.nus.edu.sg/iframe/lti-return/panopto",
+                &format!("lti/Launch/panopto?context_id={}&resource_link_id={}",
                          self.module_id,
                          self.id),
                 Method::GET,

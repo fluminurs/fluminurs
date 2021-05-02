@@ -7,10 +7,8 @@ use futures_util::future;
 use futures_util::future::{BoxFuture, FutureExt};
 use reqwest::{Method, Url};
 use serde::Deserialize;
-use tokio::io::AsyncWriteExt;
 
-use crate::resource;
-use crate::resource::{OverwriteMode, OverwriteResult, Resource, RetryableError, RetryableResult};
+use crate::resource::SimpleDownloadableResource;
 use crate::util::{parse_time, sanitise_filename};
 use crate::{Api, ApiData, Result};
 
@@ -140,33 +138,16 @@ impl DirectoryHandle {
 }
 
 #[async_trait(?Send)]
-impl Resource for File {
+impl SimpleDownloadableResource for File {
     fn path(&self) -> &Path {
         &self.path
     }
 
-    async fn download(
-        &self,
-        api: &Api,
-        destination: &Path,
-        temp_destination: &Path,
-        overwrite: OverwriteMode,
-    ) -> Result<OverwriteResult> {
-        resource::do_retryable_download(
-            api,
-            destination,
-            temp_destination,
-            overwrite,
-            self.last_updated,
-            move |api| self.get_download_url(api),
-            move |api, url, temp_destination| Self::download_chunks(api, url, temp_destination),
-        )
-        .await
+    fn get_last_updated(&self) -> SystemTime {
+        self.last_updated
     }
-}
 
-impl File {
-    pub async fn get_download_url(&self, api: &Api) -> Result<Url> {
+    async fn get_download_url(&self, api: &Api) -> Result<Url> {
         let data = api
             .api_as_json::<ApiData<String>>(
                 &format!("files/file/{}/downloadurl", self.id),
@@ -179,33 +160,6 @@ impl File {
         } else {
             Err("Invalid API response from server: type mismatch")
         }
-    }
-
-    pub async fn download_chunks(
-        api: &Api,
-        download_url: reqwest::Url,
-        temp_destination: &Path,
-    ) -> RetryableResult<()> {
-        let mut file = tokio::fs::File::create(temp_destination)
-            .await
-            .map_err(|_| RetryableError::Fail("Unable to open temporary file"))?;
-        let mut res = api
-            .get_client()
-            .get(download_url)
-            .send()
-            .await
-            .map_err(|_| RetryableError::Retry("Failed during download"))?;
-        while let Some(chunk) = res
-            .chunk()
-            .await
-            .map_err(|_| RetryableError::Retry("Failed during streaming"))?
-            .as_deref()
-        {
-            file.write_all(chunk)
-                .await
-                .map_err(|_| RetryableError::Fail("Failed writing to disk"))?;
-        }
-        Ok(())
     }
 }
 

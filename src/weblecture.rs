@@ -7,9 +7,8 @@ use reqwest::{Method, Url};
 use scraper::{Html, Selector};
 use serde::Deserialize;
 
-use crate::resource::{OverwriteMode, OverwriteResult, Resource};
+use crate::resource::SimpleDownloadableResource;
 use crate::util::{parse_time, sanitise_filename};
-use crate::{file::File, resource};
 use crate::{Api, ApiData, Result};
 
 #[derive(Debug, Deserialize)]
@@ -105,34 +104,15 @@ impl WebLectureHandle {
 }
 
 #[async_trait(?Send)]
-impl Resource for WebLectureVideo {
+impl SimpleDownloadableResource for WebLectureVideo {
     fn path(&self) -> &Path {
         &self.path
     }
 
-    async fn download(
-        &self,
-        api: &Api,
-        destination: &Path,
-        temp_destination: &Path,
-        overwrite: OverwriteMode,
-    ) -> Result<OverwriteResult> {
-        resource::do_retryable_download(
-            api,
-            destination,
-            temp_destination,
-            overwrite,
-            self.last_updated,
-            move |api| self.get_download_url(api),
-            move |api, video_url, temp_destination| {
-                File::download_chunks(api, video_url, temp_destination)
-            },
-        )
-        .await
+    fn get_last_updated(&self) -> SystemTime {
+        self.last_updated
     }
-}
 
-impl WebLectureVideo {
     async fn get_download_url(&self, api: &Api) -> Result<Url> {
         let query_params_resp = api
             .api_as_json::<Option<PanoptoRequestConstructionDetails>>(
@@ -168,7 +148,9 @@ impl WebLectureVideo {
             None => Err("Invalid API response from server: type mismatch"),
         }
     }
+}
 
+impl WebLectureVideo {
     fn extract_video_url_from_document(html: &str) -> Option<String> {
         let document = Html::parse_document(html);
         let selector = Selector::parse(r#"meta[property="og:video"]"#).unwrap();

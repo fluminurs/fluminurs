@@ -30,9 +30,9 @@ struct WebLectureMedia {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct PanoptoRequestConstructionDetails {
-    // TODO: rename?
-    launchURL: String,
-    data_items: Vec<PanoptoQueryParameter>
+    #[serde(rename = "launchURL")]
+    launch_url: String,
+    data_items: Vec<PanoptoQueryParameter>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -84,7 +84,7 @@ impl WebLectureHandle {
                             .into_iter()
                             .map(|w| WebLectureVideo {
                                 module_id: self.id.clone(),
-                                id: w.id.clone(),
+                                id: w.id,
                                 path: self.path.join(Self::make_mp4_extension(Path::new(
                                     &sanitise_filename(&w.name),
                                 ))),
@@ -137,10 +137,9 @@ impl WebLectureVideo {
     async fn get_download_url(&self, api: &Api) -> Result<Url> {
         let query_params_resp = api
             .api_as_json::<Option<PanoptoRequestConstructionDetails>>(
-                &format!("lti/Launch/panopto?context_id={}&resource_link_id={}&returnURL={}",
+                &format!("lti/Launch/panopto?context_id={}&resource_link_id={}&returnURL=https://luminus.nus.edu.sg/iframe/lti-return/panopto",
                          self.module_id,
-                         self.id,
-                        "https://luminus.nus.edu.sg/iframe/lti-return/panopto"),
+                         self.id),
                 Method::GET,
                 None,
             )
@@ -148,15 +147,16 @@ impl WebLectureVideo {
 
         match query_params_resp {
             Some(query_params) => {
-                let url = Url::parse(&query_params.launchURL).map_err(|_| "Unable to parse web lecture URL")?;
+                let url = Url::parse(&query_params.launch_url).map_err(|_| "Unable to parse web lecture URL")?;
 
-                let mut form: HashMap<&str, &str> = HashMap::new();
-                query_params.data_items
+                let form: HashMap<&str, &str> = query_params
+                    .data_items
                     .iter()
-                    .for_each(|item| { form.insert(&item.key, &item.value); });
+                    .map(|item| (&item.key[..], &item.value[..]))
+                    .collect();
 
                 let html = api
-                    .get_html(&url.to_string(), Method::POST, Some(&form))
+                    .get_html(url, Method::POST, Some(&form))
                     .await?;
 
                 let video_url = Self::extract_video_url_from_document(&html);
@@ -174,9 +174,9 @@ impl WebLectureVideo {
         let document = Html::parse_document(html);
         let selector = Selector::parse(r#"meta[property="og:video"]"#).unwrap();
 
-        match document.select(&selector).next() {
-            Some(element) => element.value().attr("content").map(|x| x.to_string()),
-            None => None,
-        }
+        document
+            .select(&selector)
+            .next()
+            .and_then(|element| element.value().attr("content").map(|x| x.to_string()))
     }
 }

@@ -26,7 +26,8 @@ struct Media {
     /* id: String, */
     name: String,
     last_updated_date: String,
-    stream_url_path: String, // used to download the stream
+    // used to download the stream
+    stream_url_path: Option<String>, // Not all multimedia items are videos
 }
 
 pub struct MultimediaHandle {
@@ -86,12 +87,15 @@ impl MultimediaHandle {
         match channel_resp.data {
             Some(medias) => Ok(medias
                 .into_iter()
-                .map(|m| Video {
-                    stream_url_path: m.stream_url_path,
-                    path: channel_path.join(Self::make_mkv_extension(Path::new(
-                        &sanitise_filename(&m.name),
-                    ))),
-                    last_updated: parse_time(&m.last_updated_date),
+                .filter_map(|m| match m.stream_url_path {
+                    Some(stream_url_path) => Some(Video {
+                        stream_url_path,
+                        path: channel_path.join(Self::make_mkv_extension(Path::new(
+                            &sanitise_filename(&m.name),
+                        ))),
+                        last_updated: parse_time(&m.last_updated_date),
+                    }),
+                    None => None,
                 })
                 .collect::<Vec<_>>()),
             None => Err("Invalid API response from server: type mismatch"),

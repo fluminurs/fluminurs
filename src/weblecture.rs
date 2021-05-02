@@ -151,7 +151,7 @@ impl SimpleDownloadableResource for WebLectureVideo {
 }
 
 impl WebLectureVideo {
-    fn extract_video_url_from_document(html: &str) -> Option<String> {
+    pub fn extract_video_url_from_document(html: &str) -> Option<String> {
         let document = Html::parse_document(html);
         let selector = Selector::parse(r#"meta[property="og:video"]"#).unwrap();
 

@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use reqwest::Method;
 use serde::Deserialize;
 
+use crate::external_multimedia::ExternalMultimediaHandle;
 use crate::file::DirectoryHandle;
 use crate::multimedia::MultimediaHandle;
 use crate::util::sanitise_filename;
@@ -89,6 +90,13 @@ impl Module {
 
     pub fn multimedia_root<F: FnOnce(&str) -> PathBuf>(&self, make_path: F) -> MultimediaHandle {
         MultimediaHandle::new(self.id.clone(), make_path(&sanitise_filename(&self.code)))
+    }
+
+    pub fn external_multimedia_root<F: FnOnce(&str) -> PathBuf>(
+        &self,
+        make_path: F,
+    ) -> ExternalMultimediaHandle {
+        ExternalMultimediaHandle::new(self.id.clone(), make_path(&sanitise_filename(&self.code)))
     }
 
     pub fn weblecture_root<F: FnOnce(&str) -> PathBuf>(&self, make_path: F) -> WebLectureHandle {

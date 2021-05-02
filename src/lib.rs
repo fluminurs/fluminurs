@@ -10,6 +10,7 @@ use serde::Deserialize;
 
 use self::module::Module;
 
+pub mod external_multimedia;
 pub mod file;
 pub mod module;
 pub mod multimedia;
@@ -230,6 +231,19 @@ impl Api {
         .await?;
 
         res.text().await.map_err(|_| "Unable to get text")
+    }
+
+    pub async fn custom_request<F>(
+        &self,
+        url: Url,
+        method: Method,
+        form: Option<&HashMap<&str, &str>>,
+        edit_request: F,
+    ) -> Result<Response>
+    where
+        F: (Fn(RequestBuilder) -> RequestBuilder),
+    {
+        infinite_retry_http(&self.client, url, method, form, edit_request).await
     }
 
     async fn current_term(&self) -> Result<String> {

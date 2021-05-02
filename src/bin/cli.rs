@@ -10,6 +10,7 @@ use clap::{App, Arg};
 use futures_util::{future, stream, StreamExt};
 use serde::{Deserialize, Serialize};
 
+use fluminurs::external_multimedia::ExternalMultimediaVideo;
 use fluminurs::file::File;
 use fluminurs::module::Module;
 use fluminurs::multimedia::Video;
@@ -167,6 +168,43 @@ async fn load_modules_multimedia(api: &Api, modules: &[Module]) -> Result<Vec<Vi
 
     for e in errors {
         println!("Failed loading module multimedia: {}", e);
+    }
+    Ok(files)
+}
+
+async fn load_modules_external_multimedia(
+    api: &Api,
+    modules: &[Module],
+) -> Result<Vec<ExternalMultimediaVideo>> {
+    let multimedias = modules
+        .iter()
+        .filter(|module| module.has_access())
+        .map(|module| {
+            module.external_multimedia_root(|code| Path::new(code).join(Path::new("Multimedia")))
+        })
+        .collect::<Vec<_>>();
+
+    let (files, errors) = future::join_all(
+        multimedias
+            .into_iter()
+            .map(|multimedia| multimedia.load(api)),
+    )
+    .await
+    .into_iter()
+    .fold((vec![], vec![]), move |(mut ok, mut err), res| {
+        match res {
+            Ok(mut dir) => {
+                ok.append(&mut dir);
+            }
+            Err(e) => {
+                err.push(e);
+            }
+        }
+        (ok, err)
+    });
+
+    for e in errors {
+        println!("Failed loading module external multimedia: {}", e);
     }
     Ok(files)
 }
@@ -475,13 +513,23 @@ async fn main() -> Result<()> {
 
     if do_multimedia || multimedia_download_destination.is_some() {
         let module_multimedia = load_modules_multimedia(&api, &modules).await?;
+        let module_external_multimedia = load_modules_external_multimedia(&api, &modules).await?;
 
         if do_multimedia {
             list_resources(&module_multimedia);
+            list_resources(&module_external_multimedia);
         }
 
         if let Some(destination) = multimedia_download_destination {
             download_resources(&api, &module_multimedia, &destination, overwrite_mode, 4).await?;
+            download_resources(
+                &api,
+                &module_external_multimedia,
+                &destination,
+                overwrite_mode,
+                4,
+            )
+            .await?;
         }
     }
 

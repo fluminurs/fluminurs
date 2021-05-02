@@ -14,10 +14,10 @@ use crate::{Api, ApiData, Result};
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct Channel {
-    id: String,
-    name: String,
-    is_external_tool: bool,
+pub struct Channel {
+    pub id: String,
+    pub name: String,
+    pub is_external_tool: bool,
 }
 
 #[derive(Debug, Deserialize)]

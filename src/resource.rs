@@ -3,6 +3,8 @@ use std::time::SystemTime;
 
 use async_trait::async_trait;
 use futures_util::future::Future;
+use reqwest::Url;
+use tokio::io::AsyncWriteExt;
 
 use crate::{Api, Error, Result};
 
@@ -16,6 +18,39 @@ pub trait Resource {
         temp_destination: &Path,
         overwrite: OverwriteMode,
     ) -> Result<OverwriteResult>;
+}
+
+#[async_trait(?Send)]
+pub trait SimpleDownloadableResource {
+    fn path(&self) -> &Path;
+    fn get_last_updated(&self) -> SystemTime;
+    async fn get_download_url(&self, api: &Api) -> Result<Url>;
+}
+
+#[async_trait(?Send)]
+impl<T: SimpleDownloadableResource> Resource for T {
+    fn path(&self) -> &Path {
+        self.path()
+    }
+
+    async fn download(
+        &self,
+        api: &Api,
+        destination: &Path,
+        temp_destination: &Path,
+        overwrite: OverwriteMode,
+    ) -> Result<OverwriteResult> {
+        do_retryable_download(
+            api,
+            destination,
+            temp_destination,
+            overwrite,
+            self.get_last_updated(),
+            move |api| self.get_download_url(api),
+            move |api, url, temp_destination| download_chunks(api, url, temp_destination),
+        )
+        .await
+    }
 }
 
 #[derive(Copy, Clone)]
@@ -83,6 +118,33 @@ pub async fn do_retryable_download<
         .map_err(|_| "Unable to set last modified time")?;
     }
     Ok(result)
+}
+
+async fn download_chunks(
+    api: &Api,
+    download_url: reqwest::Url,
+    temp_destination: &Path,
+) -> RetryableResult<()> {
+    let mut file = tokio::fs::File::create(temp_destination)
+        .await
+        .map_err(|_| RetryableError::Fail("Unable to open temporary file"))?;
+    let mut res = api
+        .get_client()
+        .get(download_url)
+        .send()
+        .await
+        .map_err(|_| RetryableError::Retry("Failed during download"))?;
+    while let Some(chunk) = res
+        .chunk()
+        .await
+        .map_err(|_| RetryableError::Retry("Failed during streaming"))?
+        .as_deref()
+    {
+        file.write_all(chunk)
+            .await
+            .map_err(|_| RetryableError::Fail("Failed writing to disk"))?;
+    }
+    Ok(())
 }
 
 async fn prepare_path(

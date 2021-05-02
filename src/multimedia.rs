@@ -89,7 +89,7 @@ impl MultimediaHandle {
                 .into_iter()
                 .filter_map(|m| match m.stream_url_path {
                     Some(stream_url_path) => Some(Video {
-                        stream_url_path: stream_url_path,
+                        stream_url_path,
                         path: channel_path.join(Self::make_mkv_extension(Path::new(
                             &sanitise_filename(&m.name),
                         ))),

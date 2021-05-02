@@ -153,10 +153,10 @@ impl WebLectureVideo {
                 let form: HashMap<&str, &str> = query_params
                     .data_items
                     .iter()
-                    .map(|item| (&item.key[..], &item.value[..]))
+                    .map(|item| (item.key.as_str(), item.value.as_str()))
                     .collect();
 
-                let html = api.get_html(url, Method::POST, Some(&form)).await?;
+                let html = api.get_text(url, Method::POST, Some(&form)).await?;
 
                 let video_url = Self::extract_video_url_from_document(&html);
 

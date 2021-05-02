@@ -214,7 +214,7 @@ impl Api {
         .await
     }
 
-    pub async fn get_html(
+    pub async fn get_text(
         &self,
         url: Url,
         method: Method,

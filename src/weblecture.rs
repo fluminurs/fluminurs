@@ -7,9 +7,9 @@ use reqwest::{Method, Url};
 use scraper::{Html, Selector};
 use serde::Deserialize;
 
-use crate::{file::File, resource};
 use crate::resource::{OverwriteMode, OverwriteResult, Resource};
 use crate::util::{parse_time, sanitise_filename};
+use crate::{file::File, resource};
 use crate::{Api, ApiData, Result};
 
 #[derive(Debug, Deserialize)]
@@ -79,22 +79,20 @@ impl WebLectureHandle {
                     .await?;
 
                 match weblectures_resp.data {
-                    Some(weblectures) => {
-                        Ok(weblectures
-                            .into_iter()
-                            .map(|w| WebLectureVideo {
-                                module_id: self.id.clone(),
-                                id: w.id,
-                                path: self.path.join(Self::make_mp4_extension(Path::new(
-                                    &sanitise_filename(&w.name),
-                                ))),
-                                last_updated: parse_time(&w.last_updated_date),
-                            })
-                            .collect::<Vec<_>>())
-                    },
+                    Some(weblectures) => Ok(weblectures
+                        .into_iter()
+                        .map(|w| WebLectureVideo {
+                            module_id: self.id.clone(),
+                            id: w.id,
+                            path: self.path.join(Self::make_mp4_extension(Path::new(
+                                &sanitise_filename(&w.name),
+                            ))),
+                            last_updated: parse_time(&w.last_updated_date),
+                        })
+                        .collect::<Vec<_>>()),
                     None => Err("Invalid API response from server: type mismatch"),
                 }
-            },
+            }
             // If an error occurred, there are no weblectures for that module
             Err(_) => Ok(vec![]),
         }
@@ -138,9 +136,10 @@ impl WebLectureVideo {
     async fn get_download_url(&self, api: &Api) -> Result<Url> {
         let query_params_resp = api
             .api_as_json::<Option<PanoptoRequestConstructionDetails>>(
-                &format!("lti/Launch/panopto?context_id={}&resource_link_id={}",
-                         self.module_id,
-                         self.id),
+                &format!(
+                    "lti/Launch/panopto?context_id={}&resource_link_id={}",
+                    self.module_id, self.id
+                ),
                 Method::GET,
                 None,
             )
@@ -148,7 +147,8 @@ impl WebLectureVideo {
 
         match query_params_resp {
             Some(query_params) => {
-                let url = Url::parse(&query_params.launch_url).map_err(|_| "Unable to parse web lecture URL")?;
+                let url = Url::parse(&query_params.launch_url)
+                    .map_err(|_| "Unable to parse web lecture URL")?;
 
                 let form: HashMap<&str, &str> = query_params
                     .data_items
@@ -156,9 +156,7 @@ impl WebLectureVideo {
                     .map(|item| (&item.key[..], &item.value[..]))
                     .collect();
 
-                let html = api
-                    .get_html(url, Method::POST, Some(&form))
-                    .await?;
+                let html = api.get_html(url, Method::POST, Some(&form)).await?;
 
                 let video_url = Self::extract_video_url_from_document(&html);
 
@@ -166,7 +164,7 @@ impl WebLectureVideo {
                     Some(url) => Ok(Url::parse(&url).map_err(|_| "Unable to parse URL")?),
                     None => Err("Unable to parse HTML"),
                 }
-            },
+            }
             None => Err("Invalid API response from server: type mismatch"),
         }
     }

@@ -5,8 +5,8 @@ use serde::Deserialize;
 
 use crate::file::DirectoryHandle;
 use crate::multimedia::MultimediaHandle;
-use crate::weblecture::WebLectureHandle;
 use crate::util::sanitise_filename;
+use crate::weblecture::WebLectureHandle;
 use crate::{Api, ApiData, Result};
 
 #[derive(Debug, Deserialize)]

@@ -175,7 +175,9 @@ async fn load_modules_weblectures(api: &Api, modules: &[Module]) -> Result<Vec<W
     let weblectures = modules
         .iter()
         .filter(|module| module.has_access())
-        .map(|module| module.weblecture_root(|code| Path::new(code).join(Path::new("Web Lectures"))))
+        .map(|module| {
+            module.weblecture_root(|code| Path::new(code).join(Path::new("Web Lectures")))
+        })
         .collect::<Vec<_>>();
 
     let (files, errors) = future::join_all(

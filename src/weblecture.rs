@@ -61,15 +61,15 @@ impl WebLectureHandle {
 
     pub async fn load(self, api: &Api) -> Result<Vec<WebLectureVideo>> {
         let weblecture_resp = api
-            .api_as_json::<Option<WebLectureResponse>>(
+            .api_as_json::<WebLectureResponse>(
                 &format!("weblecture/?ParentID={}", self.id),
                 Method::GET,
                 None,
             )
-            .await?;
+            .await;
 
         match weblecture_resp {
-            Some(weblecture) => {
+            Ok(weblecture) => {
                 let weblectures_resp = api
                     .api_as_json::<ApiData<Vec<WebLectureMedia>>>(
                         &format!("weblecture/{}/sessions", weblecture.id),
@@ -95,7 +95,8 @@ impl WebLectureHandle {
                     None => Err("Invalid API response from server: type mismatch"),
                 }
             },
-            None => Err("Invalid API response from server: type mismatch"),
+            // If an error occurred, there are no weblectures for that module
+            Err(_) => Ok(vec![]),
         }
     }
 

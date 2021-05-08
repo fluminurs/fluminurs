@@ -14,6 +14,7 @@ use fluminurs::file::File;
 use fluminurs::module::Module;
 use fluminurs::multimedia::Video;
 use fluminurs::resource::{OverwriteMode, OverwriteResult, Resource};
+use fluminurs::weblecture::WebLectureVideo;
 use fluminurs::{Api, Result};
 
 #[macro_use]
@@ -170,6 +171,40 @@ async fn load_modules_multimedia(api: &Api, modules: &[Module]) -> Result<Vec<Vi
     Ok(files)
 }
 
+async fn load_modules_weblectures(api: &Api, modules: &[Module]) -> Result<Vec<WebLectureVideo>> {
+    let weblectures = modules
+        .iter()
+        .filter(|module| module.has_access())
+        .map(|module| {
+            module.weblecture_root(|code| Path::new(code).join(Path::new("Web Lectures")))
+        })
+        .collect::<Vec<_>>();
+
+    let (files, errors) = future::join_all(
+        weblectures
+            .into_iter()
+            .map(|weblecture| weblecture.load(api)),
+    )
+    .await
+    .into_iter()
+    .fold((vec![], vec![]), move |(mut ok, mut err), res| {
+        match res {
+            Ok(mut dir) => {
+                ok.append(&mut dir);
+            }
+            Err(e) => {
+                err.push(e);
+            }
+        }
+        (ok, err)
+    });
+
+    for e in errors {
+        println!("Failed loading module web lecture: {}", e);
+    }
+    Ok(files)
+}
+
 fn list_resources<T: Resource>(resources: &[T]) {
     for resource in resources {
         println!("{}", resource.path().display())
@@ -300,6 +335,12 @@ async fn main() -> Result<()> {
                 .long("download-multimedia-to")
                 .takes_value(true),
         )
+        .arg(Arg::with_name("list-weblectures").long("list-weblectures"))
+        .arg(
+            Arg::with_name("download-weblectures")
+                .long("download-weblectures-to")
+                .takes_value(true),
+        )
         .arg(
             Arg::with_name("credential-file")
                 .long("credential-file")
@@ -349,6 +390,10 @@ async fn main() -> Result<()> {
     let do_multimedia = matches.is_present("list-multimedia");
     let multimedia_download_destination = matches
         .value_of("download-multimedia")
+        .map(|s| s.to_owned());
+    let do_weblectures = matches.is_present("list-weblectures");
+    let weblectures_download_destination = matches
+        .value_of("download-weblectures")
         .map(|s| s.to_owned());
     let include_uploadable_folders = matches
         .values_of("include-uploadable")
@@ -437,6 +482,18 @@ async fn main() -> Result<()> {
 
         if let Some(destination) = multimedia_download_destination {
             download_resources(&api, &module_multimedia, &destination, overwrite_mode, 4).await?;
+        }
+    }
+
+    if do_weblectures || weblectures_download_destination.is_some() {
+        let module_weblectures = load_modules_weblectures(&api, &modules).await?;
+
+        if do_weblectures {
+            list_resources(&module_weblectures);
+        }
+
+        if let Some(destination) = weblectures_download_destination {
+            download_resources(&api, &module_weblectures, &destination, overwrite_mode, 4).await?;
         }
     }
 

@@ -1,8 +1,9 @@
 use std::collections::HashMap;
 
+use reqwest::header::{CONTENT_TYPE, USER_AGENT};
 use reqwest::redirect::Policy;
+use reqwest::Certificate;
 use reqwest::Method;
-use reqwest::{header::CONTENT_TYPE, Certificate};
 use reqwest::{Client, RequestBuilder, Response, Url};
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
@@ -14,6 +15,7 @@ pub mod module;
 pub mod multimedia;
 pub mod resource;
 pub mod util;
+pub mod weblecture;
 
 pub type Error = &'static str;
 pub type Result<T> = std::result::Result<T, Error>;
@@ -210,6 +212,24 @@ impl Api {
                 .bearer_auth(self.jwt.as_str())
         })
         .await
+    }
+
+    pub async fn get_text(
+        &self,
+        url: Url,
+        method: Method,
+        form: Option<&HashMap<&str, &str>>,
+    ) -> Result<String> {
+        let res = infinite_retry_http(&self.client, url, method, form, move |req| {
+            // Panapto displays a 500 internal server error page without a desktop user-agent
+            req.header(
+                USER_AGENT,
+                "Mozilla/5.0 (X11; Linux x86_64; rv:88.0) Gecko/20100101 Firefox/88.0",
+            )
+        })
+        .await?;
+
+        res.text().await.map_err(|_| "Unable to get text")
     }
 
     async fn current_term(&self) -> Result<String> {

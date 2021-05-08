@@ -6,6 +6,7 @@ use serde::Deserialize;
 use crate::file::DirectoryHandle;
 use crate::multimedia::MultimediaHandle;
 use crate::util::sanitise_filename;
+use crate::weblecture::WebLectureHandle;
 use crate::{Api, ApiData, Result};
 
 #[derive(Debug, Deserialize)]
@@ -88,5 +89,9 @@ impl Module {
 
     pub fn multimedia_root<F: FnOnce(&str) -> PathBuf>(&self, make_path: F) -> MultimediaHandle {
         MultimediaHandle::new(self.id.clone(), make_path(&sanitise_filename(&self.code)))
+    }
+
+    pub fn weblecture_root<F: FnOnce(&str) -> PathBuf>(&self, make_path: F) -> WebLectureHandle {
+        WebLectureHandle::new(self.id.clone(), make_path(&sanitise_filename(&self.code)))
     }
 }

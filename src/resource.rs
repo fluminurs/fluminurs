@@ -232,13 +232,17 @@ async fn infinite_retry_download<
                 break;
             }
             Err(err) => {
-                tokio::fs::remove_file(temp_destination)
-                    .await
-                    .map_err(|_| "Unable to delete temporary file")?;
+                let success = tokio::fs::remove_file(temp_destination).await.is_ok();
                 match err {
-                    RetryableError::Retry(_) => { /* retry */ }
+                    RetryableError::Retry(_) => {
+                        if !success {
+                            return Err("Unable to delete temporary file");
+                        }
+                        /* retry */
+                    }
                     RetryableError::Fail(err) => {
-                        Err(err)?;
+                        // return the underlying error (perhaps explaining why the file can't be created)
+                        return Err(err);
                     }
                 }
             }

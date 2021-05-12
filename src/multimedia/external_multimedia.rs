@@ -36,12 +36,13 @@ struct ExternalMultimediaRequest {
     pub query_parameters: ExternalMultimediaRequestQueryParameters,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ExternalMultimediaRequestQueryParameters {
     #[serde(rename = "folderID")]
     pub folder_id: String,
 }
+
 pub struct ExternalVideo {
     html_url: String,
     path: PathBuf,
@@ -60,49 +61,61 @@ pub(super) async fn load_external_channel(
     )
     .await?;
 
-    // TODO: NO HARDCODE!>! :P
-    let query = response.url().fragment();
-    let folder_id = if let Some(fragment) = query {
-        Some(&fragment[12..fragment.len() - 3])
-    } else {
-        None
-    };
-
-    match folder_id {
-        Some(folder_id) => {
-            let panopto_url =
-                Url::parse("https://mediaweb.ap.panopto.com/Panopto/Services/Data.svc/GetSessions")
-                    .expect("Invalid URL");
-
-            let json = ExternalMultimediaRequest {
-                query_parameters: ExternalMultimediaRequestQueryParameters {
-                    folder_id: folder_id.to_string(),
-                },
-            };
-
-            let response = api
-                .custom_request(panopto_url, Method::POST, None, |req| req.json(&json))
-                .await?;
-
-            let output = response
-                .json::<ExternalMultimediaResponse>()
-                .await
-                .map_err(|_| "Unable to deserialize JSON")?;
-
-            Ok(output
-                .d
-                .results
-                .into_iter()
-                .map(|m| ExternalVideo {
-                    html_url: m.viewer_url,
-                    path: channel_path.join(super::make_mp4_extension(Path::new(
-                        &sanitise_filename(&m.session_name),
-                    ))),
+    // response.url() looks like this: https://mediaweb.ap.panopto.com/Panopto/Pages/Sessions/List.aspx?embedded=1#folderID="xxxxxx"
+    // where 'xxxxxx' (without quotes) is the thing we want to extract
+    let query_parameters: ExternalMultimediaRequestQueryParameters = response
+        .url()
+        .fragment()
+        .ok_or("Query parameters missing from external multimedia response")
+        .and_then(|s| {
+            serde_urlencoded::from_str(s).map_err(|_| {
+                "Failed to decode external multimedia request query parameters to get folder ID"
+            })
+        })
+        .and_then(|qp: ExternalMultimediaRequestQueryParameters| {
+            // we have to remove the quotes manually because Panopto uses some kind of non-standard encoding
+            let s = qp.folder_id.as_str();
+            let err = Err("Cannot parse external multimedia folder ID");
+            if s.len() <= 2 {
+                return err;
+            }
+            let (tmp, last) = s.split_at(s.len() - 1);
+            let (first, mid) = tmp.split_at(1);
+            if first != "\"" || last != "\"" {
+                err
+            } else {
+                Ok(ExternalMultimediaRequestQueryParameters {
+                    folder_id: mid.to_string(),
                 })
-                .collect::<Vec<_>>())
-        }
-        None => Err("No folder ID"),
-    }
+            }
+        })?;
+
+    let panopto_url =
+        Url::parse("https://mediaweb.ap.panopto.com/Panopto/Services/Data.svc/GetSessions")
+            .expect("Invalid URL");
+
+    let json = ExternalMultimediaRequest { query_parameters };
+
+    let response = api
+        .custom_request(panopto_url, Method::POST, None, |req| req.json(&json))
+        .await?;
+
+    let output = response
+        .json::<ExternalMultimediaResponse>()
+        .await
+        .map_err(|_| "Unable to deserialize JSON")?;
+
+    Ok(output
+        .d
+        .results
+        .into_iter()
+        .map(|m| ExternalVideo {
+            html_url: m.viewer_url,
+            path: channel_path.join(super::make_mp4_extension(Path::new(&sanitise_filename(
+                &m.session_name,
+            )))),
+        })
+        .collect::<Vec<_>>())
 }
 
 #[async_trait(?Send)]

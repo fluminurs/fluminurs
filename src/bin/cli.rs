@@ -10,10 +10,10 @@ use clap::{App, Arg};
 use futures_util::{future, stream, StreamExt};
 use serde::{Deserialize, Serialize};
 
-use fluminurs::external_multimedia::ExternalMultimediaVideo;
 use fluminurs::file::File;
 use fluminurs::module::Module;
-use fluminurs::multimedia::Video;
+use fluminurs::multimedia::ExternalVideo;
+use fluminurs::multimedia::InternalVideo;
 use fluminurs::resource::{OverwriteMode, OverwriteResult, Resource};
 use fluminurs::weblecture::WebLectureVideo;
 use fluminurs::{Api, Result};
@@ -140,73 +140,43 @@ async fn load_modules_files(
     Ok(files)
 }
 
-async fn load_modules_multimedia(api: &Api, modules: &[Module]) -> Result<Vec<Video>> {
+async fn load_modules_multimedia(
+    api: &Api,
+    modules: &[Module],
+) -> Result<(Vec<InternalVideo>, Vec<ExternalVideo>)> {
     let multimedias = modules
         .iter()
         .filter(|module| module.has_access())
         .map(|module| module.multimedia_root(|code| Path::new(code).join(Path::new("Multimedia"))))
         .collect::<Vec<_>>();
 
-    let (files, errors) = future::join_all(
+    let (internal_videos, external_videos, errors) = future::join_all(
         multimedias
             .into_iter()
             .map(|multimedia| multimedia.load(api)),
     )
     .await
     .into_iter()
-    .fold((vec![], vec![]), move |(mut ok, mut err), res| {
-        match res {
-            Ok(mut dir) => {
-                ok.append(&mut dir);
+    .fold(
+        (vec![], vec![], vec![]),
+        move |(mut internal_videos, mut external_videos, mut err), res| {
+            match res {
+                Ok((mut iv, mut ev)) => {
+                    internal_videos.append(&mut iv);
+                    external_videos.append(&mut ev);
+                }
+                Err(e) => {
+                    err.push(e);
+                }
             }
-            Err(e) => {
-                err.push(e);
-            }
-        }
-        (ok, err)
-    });
+            (internal_videos, external_videos, err)
+        },
+    );
 
     for e in errors {
         println!("Failed loading module multimedia: {}", e);
     }
-    Ok(files)
-}
-
-async fn load_modules_external_multimedia(
-    api: &Api,
-    modules: &[Module],
-) -> Result<Vec<ExternalMultimediaVideo>> {
-    let multimedias = modules
-        .iter()
-        .filter(|module| module.has_access())
-        .map(|module| {
-            module.external_multimedia_root(|code| Path::new(code).join(Path::new("Multimedia")))
-        })
-        .collect::<Vec<_>>();
-
-    let (files, errors) = future::join_all(
-        multimedias
-            .into_iter()
-            .map(|multimedia| multimedia.load(api)),
-    )
-    .await
-    .into_iter()
-    .fold((vec![], vec![]), move |(mut ok, mut err), res| {
-        match res {
-            Ok(mut dir) => {
-                ok.append(&mut dir);
-            }
-            Err(e) => {
-                err.push(e);
-            }
-        }
-        (ok, err)
-    });
-
-    for e in errors {
-        println!("Failed loading module external multimedia: {}", e);
-    }
-    Ok(files)
+    Ok((internal_videos, external_videos))
 }
 
 async fn load_modules_weblectures(api: &Api, modules: &[Module]) -> Result<Vec<WebLectureVideo>> {
@@ -512,24 +482,37 @@ async fn main() -> Result<()> {
     }
 
     if do_multimedia || multimedia_download_destination.is_some() {
-        let module_multimedia = load_modules_multimedia(&api, &modules).await?;
-        let module_external_multimedia = load_modules_external_multimedia(&api, &modules).await?;
+        let (module_internal_multimedia, module_external_multimedia) =
+            load_modules_multimedia(&api, &modules).await?;
 
         if do_multimedia {
-            list_resources(&module_multimedia);
+            list_resources(&module_internal_multimedia);
             list_resources(&module_external_multimedia);
         }
 
         if let Some(destination) = multimedia_download_destination {
-            download_resources(&api, &module_multimedia, &destination, overwrite_mode, 4).await?;
-            download_resources(
-                &api,
-                &module_external_multimedia,
-                &destination,
-                overwrite_mode,
-                4,
+            // We download internal and external multimedia separately
+            // because we don't want the download slots to be shared between them
+            // (since internal multimedia is from LumiNUS but external multimedia is from Panopto)
+            let (internal_result, external_result) = future::join(
+                download_resources(
+                    &api,
+                    &module_internal_multimedia,
+                    &destination,
+                    overwrite_mode,
+                    4,
+                ),
+                download_resources(
+                    &api,
+                    &module_external_multimedia,
+                    &destination,
+                    overwrite_mode,
+                    4,
+                ),
             )
-            .await?;
+            .await;
+            internal_result?;
+            external_result?;
         }
     }
 

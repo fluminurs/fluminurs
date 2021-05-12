@@ -23,7 +23,7 @@ struct PanoptoQueryParameter {
     value: String,
 }
 
-pub async fn launch_panopto(api: &Api, api_path: &str) -> Result<Response> {
+pub async fn launch(api: &Api, api_path: &str) -> Result<Response> {
     let query_params = api
         .api_as_json::<Option<PanoptoRequestConstructionDetails>>(api_path, Method::GET, None)
         .await?

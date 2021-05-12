@@ -92,7 +92,7 @@ impl ExternalMultimediaHandle {
     ) -> Result<Vec<ExternalMultimediaVideo>> {
         let channel_path = path.join(Path::new(&sanitise_filename(&channel.name)));
 
-        let response = panopto::launch_panopto(
+        let response = panopto::launch(
             api,
             &format!("lti/Launch/mediaweb?context_id={}", channel.id),
         )

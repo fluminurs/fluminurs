@@ -98,7 +98,7 @@ impl SimpleDownloadableResource for WebLectureVideo {
     }
 
     async fn get_download_url(&self, api: &Api) -> Result<Url> {
-        let response = panopto::launch_panopto(
+        let response = panopto::launch(
             api,
             &format!(
                 "lti/Launch/panopto?context_id={}&resource_link_id={}",

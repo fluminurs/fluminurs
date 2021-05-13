@@ -13,6 +13,7 @@ use self::module::Module;
 pub mod file;
 pub mod module;
 pub mod multimedia;
+pub mod panopto;
 pub mod resource;
 pub mod util;
 pub mod weblecture;
@@ -214,20 +215,39 @@ impl Api {
         .await
     }
 
-    pub async fn get_text(
+    // Add a desktop user agent to the request (for those endpoints that are picky about it)
+    pub fn add_desktop_user_agent(req: RequestBuilder) -> RequestBuilder {
+        req.header(
+            USER_AGENT,
+            "Mozilla/5.0 (X11; Linux x86_64; rv:88.0) Gecko/20100101 Firefox/88.0",
+        )
+    }
+
+    pub async fn custom_request<F>(
         &self,
         url: Url,
         method: Method,
         form: Option<&HashMap<&str, &str>>,
-    ) -> Result<String> {
-        let res = infinite_retry_http(&self.client, url, method, form, move |req| {
-            // Panapto displays a 500 internal server error page without a desktop user-agent
-            req.header(
-                USER_AGENT,
-                "Mozilla/5.0 (X11; Linux x86_64; rv:88.0) Gecko/20100101 Firefox/88.0",
-            )
-        })
-        .await?;
+        edit_request: F,
+    ) -> Result<Response>
+    where
+        F: (Fn(RequestBuilder) -> RequestBuilder),
+    {
+        infinite_retry_http(&self.client, url, method, form, edit_request).await
+    }
+
+    pub async fn get_text<F>(
+        &self,
+        url: Url,
+        method: Method,
+        form: Option<&HashMap<&str, &str>>,
+        edit_request: F,
+    ) -> Result<String>
+    where
+        F: (Fn(RequestBuilder) -> RequestBuilder),
+    {
+        // Panapto displays a 500 internal server error page without a desktop user-agent
+        let res = infinite_retry_http(&self.client, url, method, form, edit_request).await?;
 
         res.text().await.map_err(|_| "Unable to get text")
     }

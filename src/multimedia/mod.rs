@@ -12,17 +12,20 @@ use crate::resource::{OverwriteMode, OverwriteResult, Resource, RetryableError, 
 use crate::util::{parse_time, sanitise_filename};
 use crate::{Api, ApiData, Result};
 
+mod external_multimedia;
+pub use external_multimedia::ExternalVideo;
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct Channel {
-    id: String,
-    name: String,
-    is_external_tool: bool,
+pub struct Channel {
+    pub id: String,
+    pub name: String,
+    pub is_external_tool: bool,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct Media {
+struct InternalMedia {
     /* id: String, */
     name: String,
     last_updated_date: String,
@@ -35,10 +38,15 @@ pub struct MultimediaHandle {
     path: PathBuf,
 }
 
-pub struct Video {
+pub struct InternalVideo {
     stream_url_path: String,
     path: PathBuf,
     last_updated: SystemTime,
+}
+
+enum VideoList {
+    Internal(Vec<InternalVideo>),
+    External(Vec<ExternalVideo>),
 }
 
 impl MultimediaHandle {
@@ -46,10 +54,8 @@ impl MultimediaHandle {
         MultimediaHandle { id, path }
     }
 
-    // loads all (non-external) multimedia recursively
-    // (I have no idea what external multimedia does, and I don't have a module to test it anyway)
     // it appears that there can't be nested directories for multimedia
-    pub async fn load(self, api: &Api) -> Result<Vec<Video>> {
+    pub async fn load(self, api: &Api) -> Result<(Vec<InternalVideo>, Vec<ExternalVideo>)> {
         let multimedia_resp = api
             .api_as_json::<ApiData<Vec<Channel>>>(
                 &format!("multimedia/?ParentID={}", self.id),
@@ -59,23 +65,36 @@ impl MultimediaHandle {
             .await?;
 
         match multimedia_resp.data {
-            Some(channels) => future::join_all(
-                channels
-                    .into_iter()
-                    .filter(|c| !c.is_external_tool)
-                    .map(|c| Self::load_channel(api, c, &self.path)),
-            )
-            .await
-            .into_iter()
-            .collect::<Result<Vec<_>>>()
-            .map(|v| v.into_iter().flatten().collect::<Vec<_>>()),
+            Some(channels) => {
+                let video_lists: Vec<Result<VideoList>> =
+                    future::join_all(channels.into_iter().map(|c| async {
+                        Ok(if !c.is_external_tool {
+                            VideoList::Internal(Self::load_channel(api, c, &self.path).await?)
+                        } else {
+                            VideoList::External(
+                                external_multimedia::load_external_channel(api, c, &self.path)
+                                    .await?,
+                            )
+                        })
+                    }))
+                    .await;
+                let mut internal_videos = Vec::new();
+                let mut external_videos = Vec::new();
+                for video_list in video_lists {
+                    match video_list? {
+                        VideoList::Internal(mut iv) => internal_videos.append(&mut iv),
+                        VideoList::External(mut ev) => external_videos.append(&mut ev),
+                    }
+                }
+                Ok((internal_videos, external_videos))
+            }
             None => Err("Invalid API response from server: type mismatch"),
         }
     }
 
-    async fn load_channel(api: &Api, channel: Channel, path: &Path) -> Result<Vec<Video>> {
+    async fn load_channel(api: &Api, channel: Channel, path: &Path) -> Result<Vec<InternalVideo>> {
         let channel_resp = api
-            .api_as_json::<ApiData<Vec<Media>>>(
+            .api_as_json::<ApiData<Vec<InternalMedia>>>(
                 &format!("multimedia/{}/medias", channel.id),
                 Method::GET,
                 None,
@@ -88,11 +107,10 @@ impl MultimediaHandle {
             Some(medias) => Ok(medias
                 .into_iter()
                 .filter_map(|m| match m.stream_url_path {
-                    Some(stream_url_path) => Some(Video {
+                    Some(stream_url_path) => Some(InternalVideo {
                         stream_url_path,
-                        path: channel_path.join(Self::make_mkv_extension(Path::new(
-                            &sanitise_filename(&m.name),
-                        ))),
+                        path: channel_path
+                            .join(make_mp4_extension(Path::new(&sanitise_filename(&m.name)))),
                         last_updated: parse_time(&m.last_updated_date),
                     }),
                     None => None,
@@ -101,14 +119,15 @@ impl MultimediaHandle {
             None => Err("Invalid API response from server: type mismatch"),
         }
     }
+}
 
-    fn make_mkv_extension(path: &Path) -> PathBuf {
-        path.with_extension("mkv")
-    }
+// TODO: check file extension?
+fn make_mp4_extension(path: &Path) -> PathBuf {
+    path.with_extension("mp4")
 }
 
 #[async_trait(?Send)]
-impl Resource for Video {
+impl Resource for InternalVideo {
     fn path(&self) -> &Path {
         &self.path
     }
@@ -135,7 +154,7 @@ impl Resource for Video {
     }
 }
 
-impl Video {
+impl InternalVideo {
     async fn stream_video(
         api: &Api,
         stream_url_path: &str,

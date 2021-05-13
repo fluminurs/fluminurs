@@ -560,7 +560,7 @@ async fn main() -> Result<()> {
             external_result?;
         }
     }
-    
+
     if do_weblectures || weblectures_download_destination.is_some() {
         let module_weblectures = load_modules_weblectures(&api, &modules).await?;
 
@@ -581,7 +581,24 @@ async fn main() -> Result<()> {
         }
 
         if let Some(destination) = conferences_download_destination {
-            download_resources(&api, &module_conferences, &destination, overwrite_mode, 1).await?;
+            if !module_conferences.is_empty() {
+                match api.login_zoom().await {
+                    Err(e) => {
+                        println!("Failed to log in to Zoom: {}", e);
+                    }
+                    Ok(_) => {
+                        println!("Logged in to Zoom");
+                        download_resources(
+                            &api,
+                            &module_conferences,
+                            &destination,
+                            overwrite_mode,
+                            1,
+                        )
+                        .await?;
+                    }
+                }
+            }
         }
     }
 

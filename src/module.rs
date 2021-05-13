@@ -91,7 +91,7 @@ impl Module {
     pub fn multimedia_root<F: FnOnce(&str) -> PathBuf>(&self, make_path: F) -> MultimediaHandle {
         MultimediaHandle::new(self.id.clone(), make_path(&sanitise_filename(&self.code)))
     }
-    
+
     pub fn weblecture_root<F: FnOnce(&str) -> PathBuf>(&self, make_path: F) -> WebLectureHandle {
         WebLectureHandle::new(self.id.clone(), make_path(&sanitise_filename(&self.code)))
     }

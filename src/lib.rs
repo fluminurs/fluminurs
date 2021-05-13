@@ -203,6 +203,10 @@ impl Api {
         res.json::<T>()
             .await
             .map_err(|_| "Unable to deserialize JSON")
+        /*let res = self.api(path, method, form).await?;
+        let text = res.text().await.map_err(|_| "Unable to get text")?;
+        println!("{}", text.as_str());
+        serde_json::from_str(&text).map_err(|_| "Unable to deserialize JSON")*/
     }
 
     pub async fn api(
@@ -380,8 +384,7 @@ async fn zoom_signin_get_saml_request(client: &Client) -> Result<(String, String
         .text()
         .await
         .map_err(|_| "Unable to get response text")?;
-    let idp_url_regex =
-        regex::Regex::new("action=\"([^\\s\"]*)\"").map_err(|_| "Unable to parse regex")?;
+    let idp_url_regex = regex::Regex::new("action=\"([^\\s\"]*)\"").expect("Unable to parse regex");
     let idp_url = idp_url_regex
         .captures(&body)
         .ok_or("Parse error")?
@@ -389,7 +392,7 @@ async fn zoom_signin_get_saml_request(client: &Client) -> Result<(String, String
         .ok_or("Parse error")?
         .as_str();
     let saml_request_regex = regex::Regex::new("name=\"SAMLRequest\"[\\s]+value=\"([^\\s\"]*)\"")
-        .map_err(|_| "Unable to parse regex")?;
+        .expect("Unable to parse regex");
     let saml_request = saml_request_regex
         .captures(&body)
         .ok_or("Parse error")?
@@ -421,8 +424,7 @@ async fn idp_signon_post_fetch_saml_response(
         .text()
         .await
         .map_err(|_| "Unable to get response text")?;
-    let sso_url_regex =
-        regex::Regex::new("action=\"([^\\s\"]*)\"").map_err(|_| "Unable to parse regex")?;
+    let sso_url_regex = regex::Regex::new("action=\"([^\\s\"]*)\"").expect("Unable to parse regex");
     let sso_url = sso_url_regex
         .captures(&body)
         .ok_or("Parse error")?
@@ -430,7 +432,7 @@ async fn idp_signon_post_fetch_saml_response(
         .ok_or("Parse error")?
         .as_str();
     let saml_response_regex = regex::Regex::new("name=\"SAMLResponse\"[\\s]+value=\"([^\\s\"]*)\"")
-        .map_err(|_| "Unable to parse regex")?;
+        .expect("Unable to parse regex");
     let saml_response = saml_response_regex
         .captures(&body)
         .ok_or("Parse error")?

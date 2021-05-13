@@ -5,6 +5,7 @@ use reqwest::redirect::Policy;
 use reqwest::Certificate;
 use reqwest::Method;
 use reqwest::{Client, RequestBuilder, Response, Url};
+use scraper::{Html, Selector};
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
 
@@ -380,25 +381,24 @@ async fn zoom_signin_get_saml_request(client: &Client) -> Result<(String, String
         move |req| req.header(REFERER, ZOOM_REFERER_URL),
     )
     .await?;
-    let body = resp
-        .text()
-        .await
-        .map_err(|_| "Unable to get response text")?;
-    let idp_url_regex = regex::Regex::new("action=\"([^\\s\"]*)\"").expect("Unable to parse regex");
-    let idp_url = idp_url_regex
-        .captures(&body)
-        .ok_or("Parse error")?
-        .get(1)
-        .ok_or("Parse error")?
-        .as_str();
-    let saml_request_regex = regex::Regex::new("name=\"SAMLRequest\"[\\s]+value=\"([^\\s\"]*)\"")
-        .expect("Unable to parse regex");
-    let saml_request = saml_request_regex
-        .captures(&body)
-        .ok_or("Parse error")?
-        .get(1)
-        .ok_or("Parse error")?
-        .as_str();
+    let document = Html::parse_document(
+        &resp
+            .text()
+            .await
+            .map_err(|_| "Unable to get response text")?,
+    );
+    let form_selector = Selector::parse(r#"form[method="post"]"#).unwrap();
+    let idp_url = document
+        .select(&form_selector)
+        .next()
+        .and_then(|element| element.value().attr("action"))
+        .ok_or("Unable to find form action URL")?;
+    let saml_request_selector = Selector::parse(r#"input[name="SAMLRequest"]"#).unwrap();
+    let saml_request = document
+        .select(&saml_request_selector)
+        .next()
+        .and_then(|element| element.value().attr("value"))
+        .ok_or("Unable to find SAMLRequest value")?;
     Ok((
         htmlescape::decode_html(idp_url).map_err(|_| "Unable to decode URL")?,
         saml_request.to_owned(),
@@ -420,25 +420,24 @@ async fn idp_signon_post_fetch_saml_response(
         move |req| req.header(REFERER, ZOOM_REFERER_URL),
     )
     .await?;
-    let body = resp
-        .text()
-        .await
-        .map_err(|_| "Unable to get response text")?;
-    let sso_url_regex = regex::Regex::new("action=\"([^\\s\"]*)\"").expect("Unable to parse regex");
-    let sso_url = sso_url_regex
-        .captures(&body)
-        .ok_or("Parse error")?
-        .get(1)
-        .ok_or("Parse error")?
-        .as_str();
-    let saml_response_regex = regex::Regex::new("name=\"SAMLResponse\"[\\s]+value=\"([^\\s\"]*)\"")
-        .expect("Unable to parse regex");
-    let saml_response = saml_response_regex
-        .captures(&body)
-        .ok_or("Parse error")?
-        .get(1)
-        .ok_or("Parse error")?
-        .as_str();
+    let document = Html::parse_document(
+        &resp
+            .text()
+            .await
+            .map_err(|_| "Unable to get response text")?,
+    );
+    let form_selector = Selector::parse(r#"form[method="post"]"#).unwrap();
+    let sso_url = document
+        .select(&form_selector)
+        .next()
+        .and_then(|element| element.value().attr("action"))
+        .ok_or("Unable to find form action URL")?;
+    let saml_response_selector = Selector::parse(r#"input[name="SAMLResponse"]"#).unwrap();
+    let saml_response = document
+        .select(&saml_response_selector)
+        .next()
+        .and_then(|element| element.value().attr("value"))
+        .ok_or("Unable to find SAMLResponse value")?;
     Ok((
         htmlescape::decode_html(sso_url).map_err(|_| "Unable to decode URL")?,
         saml_response.to_owned(),

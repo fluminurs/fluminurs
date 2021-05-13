@@ -240,9 +240,9 @@ impl ZoomRecording {
                 )
                 .await?;
             let validate_resp_data = validate_resp
-                    .json::<ZoomValidationResponse>()
-                    .await
-                    .map_err(|_| "Unable to parse response JSON from Zoom validation")?;
+                .json::<ZoomValidationResponse>()
+                .await
+                .map_err(|_| "Unable to parse response JSON from Zoom validation")?;
 
             if !validate_resp_data.status {
                 return Err("Recording password was rejected by Zoom");

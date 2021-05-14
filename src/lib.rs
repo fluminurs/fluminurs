@@ -1,15 +1,17 @@
 use std::collections::HashMap;
 
-use reqwest::header::{CONTENT_TYPE, USER_AGENT};
+use reqwest::header::{CONTENT_TYPE, REFERER, USER_AGENT};
 use reqwest::redirect::Policy;
 use reqwest::Certificate;
 use reqwest::Method;
 use reqwest::{Client, RequestBuilder, Response, Url};
+use scraper::{Html, Selector};
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
 
 use self::module::Module;
 
+pub mod conferencing;
 pub mod file;
 pub mod module;
 pub mod multimedia;
@@ -28,6 +30,10 @@ const ADFS_REDIRECT_URI: &str = "https://luminus.nus.edu.sg/auth/callback";
 const API_BASE_URL: &str = "https://luminus.nus.edu.sg/v2/api/";
 const OCP_APIM_SUBSCRIPTION_KEY: &str = "6963c200ca9440de8fa1eede730d8f7e";
 const OCP_APIM_SUBSCRIPTION_KEY_HEADER: &str = "Ocp-Apim-Subscription-Key";
+const ADFS_REFERER_URL: &str = "https://vafs.nus.edu.sg/";
+const ZOOM_REFERER_URL: &str = "https://nus-sg.zoom.us/";
+const ZOOM_SIGNIN_URL: &str = "https://nus-sg.zoom.us/signin";
+const ZOOM_REDIRECT_URL: &str = "https://nus-sg.zoom.us/profile";
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -176,7 +182,7 @@ async fn auth_http_post(
     .await
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Api {
     jwt: String,
     client: Client,
@@ -198,6 +204,10 @@ impl Api {
         res.json::<T>()
             .await
             .map_err(|_| "Unable to deserialize JSON")
+        /*let res = self.api(path, method, form).await?;
+        let text = res.text().await.map_err(|_| "Unable to get text")?;
+        println!("{}", text.as_str());
+        serde_json::from_str(&text).map_err(|_| "Unable to deserialize JSON")*/
     }
 
     pub async fn api(
@@ -345,11 +355,109 @@ impl Api {
         })
     }
 
+    // Assumes ADFS is already logged in
+    pub async fn login_zoom(&mut self) -> Result<()> {
+        let (idp_url, saml_request) = zoom_signin_get_saml_request(&self.client).await?;
+        let (sso_url, saml_response) =
+            idp_signon_post_fetch_saml_response(&self.client, &idp_url, &saml_request).await?;
+        sso_post_saml_response(&self.client, &sso_url, &saml_response).await
+    }
+
     pub fn with_ffmpeg<S: Into<String>>(self: Api, ffmpeg_path: S) -> Api {
         Api {
             jwt: self.jwt,
             client: self.client,
             ffmpeg_path: ffmpeg_path.into(),
         }
+    }
+}
+
+async fn zoom_signin_get_saml_request(client: &Client) -> Result<(String, String)> {
+    let resp = infinite_retry_http(
+        client,
+        Url::parse(ZOOM_SIGNIN_URL).expect("Unable to parse Zoom URL"),
+        Method::GET,
+        None,
+        move |req| req.header(REFERER, ZOOM_REFERER_URL),
+    )
+    .await?;
+    let document = Html::parse_document(
+        &resp
+            .text()
+            .await
+            .map_err(|_| "Unable to get response text")?,
+    );
+    let form_selector = Selector::parse(r#"form[method="post"]"#).unwrap();
+    let idp_url = document
+        .select(&form_selector)
+        .next()
+        .and_then(|element| element.value().attr("action"))
+        .ok_or("Unable to find form action URL")?;
+    let saml_request_selector = Selector::parse(r#"input[name="SAMLRequest"]"#).unwrap();
+    let saml_request = document
+        .select(&saml_request_selector)
+        .next()
+        .and_then(|element| element.value().attr("value"))
+        .ok_or("Unable to find SAMLRequest value")?;
+    Ok((
+        htmlescape::decode_html(idp_url).map_err(|_| "Unable to decode URL")?,
+        saml_request.to_owned(),
+    ))
+}
+
+async fn idp_signon_post_fetch_saml_response(
+    client: &Client,
+    idp_url: &str,
+    saml_request: &str,
+) -> Result<(String, String)> {
+    let mut form_data = HashMap::new();
+    form_data.insert("SAMLRequest", saml_request);
+    let resp = infinite_retry_http(
+        client,
+        Url::parse(idp_url).expect("Unable to parse LDP URL"),
+        Method::POST,
+        Some(&form_data),
+        move |req| req.header(REFERER, ZOOM_REFERER_URL),
+    )
+    .await?;
+    let document = Html::parse_document(
+        &resp
+            .text()
+            .await
+            .map_err(|_| "Unable to get response text")?,
+    );
+    let form_selector = Selector::parse(r#"form[method="post"]"#).unwrap();
+    let sso_url = document
+        .select(&form_selector)
+        .next()
+        .and_then(|element| element.value().attr("action"))
+        .ok_or("Unable to find form action URL")?;
+    let saml_response_selector = Selector::parse(r#"input[name="SAMLResponse"]"#).unwrap();
+    let saml_response = document
+        .select(&saml_response_selector)
+        .next()
+        .and_then(|element| element.value().attr("value"))
+        .ok_or("Unable to find SAMLResponse value")?;
+    Ok((
+        htmlescape::decode_html(sso_url).map_err(|_| "Unable to decode URL")?,
+        saml_response.to_owned(),
+    ))
+}
+
+async fn sso_post_saml_response(client: &Client, sso_url: &str, saml_response: &str) -> Result<()> {
+    let mut form_data = HashMap::new();
+    form_data.insert("SAMLResponse", saml_response);
+    let resp = infinite_retry_http(
+        client,
+        Url::parse(sso_url).expect("Unable to parse SSO URL"),
+        Method::POST,
+        Some(&form_data),
+        move |req| req.header(REFERER, ADFS_REFERER_URL),
+    )
+    .await?;
+    if !resp.url().as_str().starts_with(ZOOM_REDIRECT_URL) {
+        Err("Zoom SSO failed")
+    } else {
+        Ok(())
     }
 }

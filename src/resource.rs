@@ -3,7 +3,7 @@ use std::time::SystemTime;
 
 use async_trait::async_trait;
 use futures_util::future::Future;
-use reqwest::Url;
+use reqwest::{RequestBuilder, Url};
 use tokio::io::AsyncWriteExt;
 
 use crate::{Api, Error, Result};
@@ -47,7 +47,9 @@ impl<T: SimpleDownloadableResource> Resource for T {
             overwrite,
             self.get_last_updated(),
             move |api| self.get_download_url(api),
-            move |api, url, temp_destination| download_chunks(api, url, temp_destination),
+            move |api, url, temp_destination| {
+                download_chunks(api, url, temp_destination, move |req| req)
+            },
         )
         .await
     }
@@ -120,17 +122,19 @@ pub async fn do_retryable_download<
     Ok(result)
 }
 
-async fn download_chunks(
+pub async fn download_chunks<F>(
     api: &Api,
     download_url: reqwest::Url,
     temp_destination: &Path,
-) -> RetryableResult<()> {
+    edit_request: F,
+) -> RetryableResult<()>
+where
+    F: (Fn(RequestBuilder) -> RequestBuilder),
+{
     let mut file = tokio::fs::File::create(temp_destination)
         .await
         .map_err(|_| RetryableError::Fail("Unable to open temporary file"))?;
-    let mut res = api
-        .get_client()
-        .get(download_url)
+    let mut res = edit_request(api.get_client().get(download_url))
         .send()
         .await
         .map_err(|_| RetryableError::Retry("Failed during download"))?;

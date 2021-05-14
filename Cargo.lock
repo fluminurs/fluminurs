@@ -306,6 +306,7 @@ dependencies = [
  "futures-util",
  "htmlescape",
  "rand 0.8.3",
+ "regex",
  "reqwest",
  "rpassword",
  "sanitize-filename",

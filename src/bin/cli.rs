@@ -15,7 +15,9 @@ use fluminurs::file::File;
 use fluminurs::module::Module;
 use fluminurs::multimedia::ExternalVideo;
 use fluminurs::multimedia::InternalVideo;
-use fluminurs::resource::{OverwriteMode, OverwriteResult, Resource};
+use fluminurs::resource::{
+    sort_and_make_all_paths_unique, OverwriteMode, OverwriteResult, Resource,
+};
 use fluminurs::weblecture::WebLectureVideo;
 use fluminurs::{Api, Result};
 
@@ -116,8 +118,8 @@ async fn load_modules_files(
                 .await
                 .map(|mut files| {
                     // to avoid duplicate files from being corrupted,
-                    // we append the id to duplicate files
-                    fluminurs::file::sort_and_make_all_paths_unique(&mut files);
+                    // we append the id to duplicate resources
+                    sort_and_make_all_paths_unique(&mut files);
                     files
                 })
         },
@@ -151,28 +153,33 @@ async fn load_modules_multimedia(
         .map(|module| module.multimedia_root(|code| Path::new(code).join(Path::new("Multimedia"))))
         .collect::<Vec<_>>();
 
-    let (internal_videos, external_videos, errors) = future::join_all(
-        multimedias
-            .into_iter()
-            .map(|multimedia| multimedia.load(api)),
-    )
-    .await
-    .into_iter()
-    .fold(
-        (vec![], vec![], vec![]),
-        move |(mut internal_videos, mut external_videos, mut err), res| {
-            match res {
-                Ok((mut iv, mut ev)) => {
-                    internal_videos.append(&mut iv);
-                    external_videos.append(&mut ev);
+    let (internal_videos, external_videos, errors) =
+        future::join_all(multimedias.into_iter().map(|multimedia| async move {
+            multimedia.load(api).await.map(|(mut ivs, mut evs)| {
+                // to avoid duplicate files from being corrupted,
+                // we append the id to duplicate resources
+                sort_and_make_all_paths_unique(&mut ivs);
+                sort_and_make_all_paths_unique(&mut evs);
+                (ivs, evs)
+            })
+        }))
+        .await
+        .into_iter()
+        .fold(
+            (vec![], vec![], vec![]),
+            move |(mut internal_videos, mut external_videos, mut err), res| {
+                match res {
+                    Ok((mut iv, mut ev)) => {
+                        internal_videos.append(&mut iv);
+                        external_videos.append(&mut ev);
+                    }
+                    Err(e) => {
+                        err.push(e);
+                    }
                 }
-                Err(e) => {
-                    err.push(e);
-                }
-            }
-            (internal_videos, external_videos, err)
-        },
-    );
+                (internal_videos, external_videos, err)
+            },
+        );
 
     for e in errors {
         println!("Failed loading module multimedia: {}", e);
@@ -189,11 +196,14 @@ async fn load_modules_weblectures(api: &Api, modules: &[Module]) -> Result<Vec<W
         })
         .collect::<Vec<_>>();
 
-    let (files, errors) = future::join_all(
-        weblectures
-            .into_iter()
-            .map(|weblecture| weblecture.load(api)),
-    )
+    let (files, errors) = future::join_all(weblectures.into_iter().map(|weblecture| async move {
+        weblecture.load(api).await.map(|mut weblectures| {
+            // to avoid duplicate files from being corrupted,
+            // we append the id to duplicate resources
+            sort_and_make_all_paths_unique(&mut weblectures);
+            weblectures
+        })
+    }))
     .await
     .into_iter()
     .fold((vec![], vec![]), move |(mut ok, mut err), res| {
@@ -223,24 +233,28 @@ async fn load_modules_conferences(api: &Api, modules: &[Module]) -> Result<Vec<Z
         })
         .collect::<Vec<_>>();
 
-    let (zoom_recordings, errors) = future::join_all(
-        conferences
-            .into_iter()
-            .map(|conference| conference.load(api)),
-    )
-    .await
-    .into_iter()
-    .fold((vec![], vec![]), move |(mut ok, mut err), res| {
-        match res {
-            Ok(mut dir) => {
-                ok.append(&mut dir);
+    let (zoom_recordings, errors) =
+        future::join_all(conferences.into_iter().map(|conference| async move {
+            conference.load(api).await.map(|mut conferences| {
+                // to avoid duplicate files from being corrupted,
+                // we append the id to duplicate resources
+                sort_and_make_all_paths_unique(&mut conferences);
+                conferences
+            })
+        }))
+        .await
+        .into_iter()
+        .fold((vec![], vec![]), move |(mut ok, mut err), res| {
+            match res {
+                Ok(mut dir) => {
+                    ok.append(&mut dir);
+                }
+                Err(e) => {
+                    err.push(e);
+                }
             }
-            Err(e) => {
-                err.push(e);
-            }
-        }
-        (ok, err)
-    });
+            (ok, err)
+        });
 
     for e in errors {
         println!("Failed loading module conferences: {}", e);

@@ -1,4 +1,3 @@
-use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
@@ -139,11 +138,18 @@ impl DirectoryHandle {
 
 #[async_trait(?Send)]
 impl SimpleDownloadableResource for File {
+    fn id(&self) -> &str {
+        &self.id
+    }
+
     fn path(&self) -> &Path {
         &self.path
     }
+    fn path_mut(&mut self) -> &mut PathBuf {
+        &mut self.path
+    }
 
-    fn get_last_updated(&self) -> SystemTime {
+    fn last_updated(&self) -> SystemTime {
         self.last_updated
     }
 
@@ -161,35 +167,4 @@ impl SimpleDownloadableResource for File {
             Err("Invalid API response from server: type mismatch")
         }
     }
-}
-
-// Makes the paths of all the given files unique, based on the last updated time and the id.
-// This function will also sort the files.
-pub fn sort_and_make_all_paths_unique(files: &mut [File]) {
-    files.sort_unstable_by(|file1, file2| {
-        file1
-            .path
-            .cmp(&file2.path)
-            .then_with(|| file1.last_updated.cmp(&file2.last_updated).reverse())
-    });
-    files.iter_mut().fold(Path::new(""), |path, file| {
-        if path == file.path {
-            file.path.set_file_name({
-                let mut new_name = file.path.file_stem().map_or_else(OsString::new, |n| {
-                    let mut new_name = n.to_owned();
-                    new_name.push("_");
-                    new_name
-                });
-                new_name.push(&file.id);
-                file.path.extension().map(|e| {
-                    new_name.push(".");
-                    new_name.push(e);
-                });
-                new_name
-            });
-            path
-        } else {
-            file.path.as_ref()
-        }
-    });
 }

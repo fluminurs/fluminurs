@@ -1,3 +1,4 @@
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
@@ -10,7 +11,10 @@ use crate::{Api, Error, Result};
 
 #[async_trait(?Send)]
 pub trait Resource {
+    fn id(&self) -> &str;
     fn path(&self) -> &Path;
+    fn path_mut(&mut self) -> &mut PathBuf;
+    fn last_updated(&self) -> SystemTime;
     async fn download(
         &self,
         api: &Api,
@@ -22,15 +26,28 @@ pub trait Resource {
 
 #[async_trait(?Send)]
 pub trait SimpleDownloadableResource {
+    fn id(&self) -> &str;
     fn path(&self) -> &Path;
-    fn get_last_updated(&self) -> SystemTime;
+    fn path_mut(&mut self) -> &mut PathBuf;
+    fn last_updated(&self) -> SystemTime;
     async fn get_download_url(&self, api: &Api) -> Result<Url>;
 }
 
 #[async_trait(?Send)]
 impl<T: SimpleDownloadableResource> Resource for T {
+    fn id(&self) -> &str {
+        self.id()
+    }
+
     fn path(&self) -> &Path {
         self.path()
+    }
+    fn path_mut(&mut self) -> &mut PathBuf {
+        self.path_mut()
+    }
+
+    fn last_updated(&self) -> SystemTime {
+        self.last_updated()
     }
 
     async fn download(
@@ -45,7 +62,7 @@ impl<T: SimpleDownloadableResource> Resource for T {
             destination,
             temp_destination,
             overwrite,
-            self.get_last_updated(),
+            self.last_updated(),
             move |api| self.get_download_url(api),
             move |api, url, temp_destination| {
                 download_chunks(api, url, temp_destination, move |req| req)
@@ -53,6 +70,35 @@ impl<T: SimpleDownloadableResource> Resource for T {
         )
         .await
     }
+}
+
+// Makes the paths of all the given files unique, based on the last updated time and the id.
+// This function will also sort the files.
+pub fn sort_and_make_all_paths_unique<T: Resource>(resources: &mut [T]) {
+    resources.sort_unstable_by(|r1, r2| {
+        r1.path()
+            .cmp(&r2.path())
+            .then_with(|| r1.last_updated().cmp(&r2.last_updated()).reverse())
+    });
+    // todo: This is not very right... conferences will append "(1)" or "(2)" etc if there are multiple links.
+    resources.iter_mut().fold(Path::new(""), |path, r| {
+        if path == r.path() {
+            let mut new_name = r.path().file_stem().map_or_else(OsString::new, |n| {
+                let mut new_name = n.to_owned();
+                new_name.push("_");
+                new_name
+            });
+            new_name.push(r.id());
+            r.path().extension().map(|e| {
+                new_name.push(".");
+                new_name.push(e);
+            });
+            r.path_mut().set_file_name(new_name);
+            path
+        } else {
+            r.path().as_ref()
+        }
+    });
 }
 
 #[derive(Copy, Clone)]

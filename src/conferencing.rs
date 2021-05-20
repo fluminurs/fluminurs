@@ -24,6 +24,8 @@ struct Conference {
     id: String,
     name: String,
     start_date: String,
+    #[serde(rename = "isPublishRecordURL")]
+    is_publish_record_url: bool, // not sure if we should use this or recordType == 1
 }
 
 #[derive(Debug, Deserialize)]
@@ -85,11 +87,17 @@ impl ConferencingHandle {
 
         // Unfortunately, we can't tell if a recording is available from just the conference_resp,
         // so we have to poll each conference individually.
+        // It appears that if `is_publish_record_url: false` (todo: ... or is it recordType == 1?)
+        // then the recording link will be unclickable on Luminus,
+        // so there's probably really no recording then
         // We also poll future meetings, since the meeting time is just a guideline anyway.
+        // todo: We could be nicer to the server by looking at our local files first,
+        // and only polling those that we don't have, since recordings can't be updated.
         match conferencing_resp.data {
             Some(conferences) => future::join_all(
                 conferences
                     .into_iter()
+                    .filter(|c| c.is_publish_record_url)
                     .map(|c| load_cloud_record(api, c, &self.path)),
             )
             .await
@@ -109,13 +117,20 @@ async fn load_cloud_record(
     // Note: Sometimes, we get back {"code":400,"status":"fail","message":"TooManyRequests"}
     // which is probably similar to the comment in infinite_retry_http, but only now it is not a HTTP error code.
     // When this happens, we should retry until succeeded.
+    // Sometimes, we also get code: 404, even though the meeting actually exists,
+    // but sometimes 404 means that there's really no recording for the meeting ... let's just try 5 times before failing?
     let request_path = format!("zoom/Meeting/{}/cloudrecord", conference.id);
+    let mut num_404_tries = 0;
     let cloud_record = loop {
         let cloud_record = api
             .api_as_json::<CloudRecord>(&request_path, Method::GET, None)
             .await?;
-        if cloud_record.code != Some(400) {
+        if cloud_record.code != Some(400) && (cloud_record.code != Some(404) || num_404_tries >= 5)
+        {
             break cloud_record;
+        }
+        if cloud_record.code == Some(404) {
+            num_404_tries += 1;
         }
     };
 

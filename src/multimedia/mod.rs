@@ -38,6 +38,7 @@ pub struct MultimediaHandle {
     path: PathBuf,
 }
 
+#[derive(Debug, Clone)]
 pub struct InternalVideo {
     id: String,
     stream_url_path: String,
@@ -128,7 +129,7 @@ fn make_mp4_extension(path: &Path) -> PathBuf {
     path.with_extension("mp4")
 }
 
-#[async_trait(?Send)]
+#[async_trait]
 impl Resource for InternalVideo {
     fn id(&self) -> &str {
         &self.id

@@ -10,7 +10,7 @@ use crate::util::sanitise_filename;
 use crate::weblecture::WebLectureHandle;
 use crate::{Api, ApiData, Result};
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 struct Access {
     #[serde(rename = "access_Full")]
     full: bool,
@@ -34,7 +34,7 @@ pub struct Announcement {
     pub description: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct Module {
     pub id: String,
     #[serde(rename = "name")]

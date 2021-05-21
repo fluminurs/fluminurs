@@ -31,6 +31,7 @@ pub struct DirectoryHandle {
     /* last_updated: SystemTime, */
 }
 
+#[derive(Debug, Clone)]
 pub struct File {
     id: String,
     path: PathBuf,
@@ -149,7 +150,7 @@ impl DirectoryHandle {
     }
 }
 
-#[async_trait(?Send)]
+#[async_trait]
 impl SimpleDownloadableResource for File {
     fn id(&self) -> &str {
         &self.id

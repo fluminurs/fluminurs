@@ -90,7 +90,7 @@ impl MultimediaHandle {
                 }
                 Ok((internal_videos, external_videos))
             }
-            None => Err("Invalid API response from server: type mismatch"),
+            None => Ok((vec![], vec![])),
         }
     }
 

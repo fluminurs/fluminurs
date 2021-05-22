@@ -53,7 +53,12 @@ pub struct ConferencingHandle {
     path: PathBuf,
 }
 
+#[derive(Debug)]
 pub struct ZoomRecording {
+    id: String, // note: this is not necessarily unique,
+    // but it will only be non-unique if the same conference has multiple recordings,
+    // which is okay (but ugly) because append_number() will be called to give each one a unique name.
+    // todo: make it less ugly... append the ID before the number is appended?
     path: PathBuf,
     share_url: String,
     password: String,
@@ -115,6 +120,8 @@ async fn load_cloud_record(
     };
 
     let start_date = parse_time(&conference.start_date);
+    let mut conference_id = conference.id;
+    let conference_name: &str = &conference.name;
 
     match cloud_record.record_instances {
         Some(record_instances) => Ok(match record_instances.len() {
@@ -122,25 +129,27 @@ async fn load_cloud_record(
             1 => record_instances
                 .into_iter()
                 .map(|cri| ZoomRecording {
+                    id: std::mem::take(&mut conference_id), // ok to use std::mem::take because this lambda is only called once
                     path: path.join(make_mp4_extension(Path::new(&sanitise_filename(
-                        &conference.name,
+                        conference_name,
                     )))),
                     share_url: cri.share_url,
                     password: cri.password,
-                    start_date: start_date,
+                    start_date,
                 })
                 .collect::<Vec<_>>(),
             _ => record_instances
                 .into_iter()
                 .enumerate()
                 .map(|(i, cri)| ZoomRecording {
+                    id: conference_id.clone(),
                     path: path.join(make_mp4_extension(Path::new(&append_number(
-                        &sanitise_filename(&conference.name),
+                        &sanitise_filename(conference_name),
                         i + 1,
                     )))),
                     share_url: cri.share_url,
                     password: cri.password,
-                    start_date: start_date,
+                    start_date,
                 })
                 .collect::<Vec<_>>(),
         }),
@@ -158,8 +167,19 @@ fn append_number(text: &str, number: usize) -> String {
 
 #[async_trait(?Send)]
 impl Resource for ZoomRecording {
+    fn id(&self) -> &str {
+        &self.id
+    }
+
     fn path(&self) -> &Path {
         &self.path
+    }
+    fn path_mut(&mut self) -> &mut PathBuf {
+        &mut self.path
+    }
+
+    fn last_updated(&self) -> SystemTime {
+        self.start_date
     }
 
     async fn download(
@@ -174,7 +194,7 @@ impl Resource for ZoomRecording {
             destination,
             temp_destination,
             overwrite,
-            self.start_date,
+            self.last_updated(),
             move |api| self.get_download_url(api),
             move |api, url, temp_destination| {
                 resource::download_chunks(api, url, temp_destination, |req| {

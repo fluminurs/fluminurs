@@ -26,7 +26,7 @@ pub struct Channel {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct InternalMedia {
-    /* id: String, */
+    id: String,
     name: String,
     last_updated_date: String,
     // used to download the stream
@@ -39,6 +39,7 @@ pub struct MultimediaHandle {
 }
 
 pub struct InternalVideo {
+    id: String,
     stream_url_path: String,
     path: PathBuf,
     last_updated: SystemTime,
@@ -108,6 +109,7 @@ impl MultimediaHandle {
                 .into_iter()
                 .filter_map(|m| match m.stream_url_path {
                     Some(stream_url_path) => Some(InternalVideo {
+                        id: m.id,
                         stream_url_path,
                         path: channel_path
                             .join(make_mp4_extension(Path::new(&sanitise_filename(&m.name)))),
@@ -128,8 +130,19 @@ fn make_mp4_extension(path: &Path) -> PathBuf {
 
 #[async_trait(?Send)]
 impl Resource for InternalVideo {
+    fn id(&self) -> &str {
+        &self.id
+    }
+
     fn path(&self) -> &Path {
         &self.path
+    }
+    fn path_mut(&mut self) -> &mut PathBuf {
+        &mut self.path
+    }
+
+    fn last_updated(&self) -> SystemTime {
+        self.last_updated
     }
 
     async fn download(
@@ -144,7 +157,7 @@ impl Resource for InternalVideo {
             destination,
             temp_destination,
             overwrite,
-            self.last_updated,
+            self.last_updated(),
             move |_| future::ready(Ok(self.stream_url_path.as_str())),
             move |api, stream_url_path, temp_destination| {
                 Self::stream_video(api, stream_url_path, temp_destination)

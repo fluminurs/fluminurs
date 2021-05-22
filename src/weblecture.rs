@@ -89,11 +89,18 @@ impl WebLectureHandle {
 
 #[async_trait(?Send)]
 impl SimpleDownloadableResource for WebLectureVideo {
+    fn id(&self) -> &str {
+        &self.id
+    }
+
     fn path(&self) -> &Path {
         &self.path
     }
+    fn path_mut(&mut self) -> &mut PathBuf {
+        &mut self.path
+    }
 
-    fn get_last_updated(&self) -> SystemTime {
+    fn last_updated(&self) -> SystemTime {
         self.last_updated
     }
 

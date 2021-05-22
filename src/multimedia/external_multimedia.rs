@@ -26,6 +26,8 @@ struct ExternalMultimediaResponseResponse {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "PascalCase")]
 struct ExternalMultimediaIndividualResponse {
+    #[serde(rename = "DeliveryID")]
+    delivery_id: String,
     viewer_url: String,
     session_name: String,
 }
@@ -44,6 +46,7 @@ struct ExternalMultimediaRequestQueryParameters {
 }
 
 pub struct ExternalVideo {
+    id: String,
     html_url: String,
     path: PathBuf,
 }
@@ -110,6 +113,7 @@ pub(super) async fn load_external_channel(
         .results
         .into_iter()
         .map(|m| ExternalVideo {
+            id: m.delivery_id,
             html_url: m.viewer_url,
             path: channel_path.join(super::make_mp4_extension(Path::new(&sanitise_filename(
                 &m.session_name,
@@ -120,11 +124,18 @@ pub(super) async fn load_external_channel(
 
 #[async_trait(?Send)]
 impl SimpleDownloadableResource for ExternalVideo {
+    fn id(&self) -> &str {
+        &self.id
+    }
+
     fn path(&self) -> &Path {
         &self.path
     }
+    fn path_mut(&mut self) -> &mut PathBuf {
+        &mut self.path
+    }
 
-    fn get_last_updated(&self) -> SystemTime {
+    fn last_updated(&self) -> SystemTime {
         // External multimedia do not have last updated dates
         SystemTime::UNIX_EPOCH
     }

@@ -55,7 +55,7 @@ pub struct ConferencingHandle {
     path: PathBuf,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ZoomRecording {
     id: String, // note: this is not necessarily unique,
     // but it will only be non-unique if the same conference has multiple recordings,
@@ -180,7 +180,7 @@ fn append_number(text: &str, number: usize) -> String {
     format!("{} ({})", text, number)
 }
 
-#[async_trait(?Send)]
+#[async_trait]
 impl Resource for ZoomRecording {
     fn id(&self) -> &str {
         &self.id
@@ -246,18 +246,21 @@ impl ZoomRecording {
                 .text()
                 .await
                 .map_err(|_| "Unable to get HTML response")?;
-            let document = Html::parse_document(&html);
-            let id_selector = Selector::parse("#meetId").unwrap();
 
-            let mut form: HashMap<&str, &str> = HashMap::new();
-            form.insert(
-                "id",
+            let id = {
+                let document = Html::parse_document(&html);
+                let id_selector = Selector::parse("#meetId").unwrap();
+
                 document
                     .select(&id_selector)
                     .next()
                     .and_then(|el| el.value().attr("value"))
-                    .ok_or("Unable to find conference id")?,
-            );
+                    .ok_or("Unable to find conference id")?
+                    .to_owned()
+            };
+
+            let mut form: HashMap<&str, &str> = HashMap::new();
+            form.insert("id", &id);
             form.insert("passwd", &self.password);
             form.insert("action", "viewdetailpage");
             form.insert("recaptcha", "");

@@ -182,7 +182,7 @@ async fn auth_http_post(
     .await
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Api {
     jwt: String,
     client: Client,

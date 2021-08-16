@@ -59,7 +59,7 @@ impl MultimediaHandle {
     pub async fn load(self, api: &Api) -> Result<(Vec<InternalVideo>, Vec<ExternalVideo>)> {
         let multimedia_resp = api
             .api_as_json::<ApiData<Vec<Channel>>>(
-                &format!("multimedia/?ParentID={}", self.id),
+                &format!("multimedia/?populate=contentSummary&ParentID={}", self.id),
                 Method::GET,
                 None,
             )

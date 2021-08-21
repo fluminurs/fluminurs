@@ -42,6 +42,7 @@ pub async fn launch(api: &Api, api_path: &str) -> Result<Response> {
         .await
 }
 
+// This function probably doesn't work any more and weblectures is probably broken as a result
 pub fn extract_video_url_from_document(html: &str) -> Result<Url> {
     let document = Html::parse_document(html);
     let selector = Selector::parse(r#"meta[property="og:video"]"#).unwrap();

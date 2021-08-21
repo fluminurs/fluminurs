@@ -17,6 +17,7 @@ pub mod module;
 pub mod multimedia;
 pub mod panopto;
 pub mod resource;
+pub mod streamer;
 pub mod util;
 pub mod weblecture;
 

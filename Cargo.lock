@@ -297,7 +297,7 @@ dependencies = [
 
 [[package]]
 name = "fluminurs"
-version = "1.3.0"
+version = "1.3.1"
 dependencies = [
  "ammonia",
  "async-trait",

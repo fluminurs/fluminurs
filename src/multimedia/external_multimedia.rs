@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
@@ -7,7 +8,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::multimedia::Channel;
 use crate::panopto;
-use crate::resource::SimpleDownloadableResource;
+use crate::resource;
+use crate::resource::{OverwriteMode, OverwriteResult, Resource};
+use crate::streamer::stream_video;
 use crate::util::sanitise_filename;
 use crate::{Api, Result};
 
@@ -28,7 +31,6 @@ struct ExternalMultimediaResponseResponse {
 struct ExternalMultimediaIndividualResponse {
     #[serde(rename = "DeliveryID")]
     delivery_id: String,
-    viewer_url: String,
     session_name: String,
 }
 
@@ -47,7 +49,6 @@ struct ExternalMultimediaRequestQueryParameters {
 
 pub struct ExternalVideo {
     id: String,
-    html_url: String,
     path: PathBuf,
 }
 
@@ -114,7 +115,6 @@ pub(super) async fn load_external_channel(
         .into_iter()
         .map(|m| ExternalVideo {
             id: m.delivery_id,
-            html_url: m.viewer_url,
             path: channel_path.join(super::make_mp4_extension(Path::new(&sanitise_filename(
                 &m.session_name,
             )))),
@@ -123,7 +123,7 @@ pub(super) async fn load_external_channel(
 }
 
 #[async_trait(?Send)]
-impl SimpleDownloadableResource for ExternalVideo {
+impl Resource for ExternalVideo {
     fn id(&self) -> &str {
         &self.id
     }
@@ -140,14 +140,84 @@ impl SimpleDownloadableResource for ExternalVideo {
         SystemTime::UNIX_EPOCH
     }
 
-    async fn get_download_url(&self, api: &Api) -> Result<Url> {
-        let url =
-            Url::parse(&self.html_url).map_err(|_| "Unable to parse external multimedia URL")?;
-
-        let html = api
-            .get_text(url, Method::GET, None, Api::add_desktop_user_agent)
-            .await?;
-
-        panopto::extract_video_url_from_document(&html)
+    async fn download(
+        &self,
+        api: &Api,
+        destination: &Path,
+        temp_destination: &Path,
+        overwrite: OverwriteMode,
+    ) -> Result<OverwriteResult> {
+        let delivery_id: &str = self.id();
+        resource::do_retryable_download(
+            api,
+            destination,
+            temp_destination,
+            overwrite,
+            self.last_updated(),
+            move |api| get_stream_url_path(api, delivery_id),
+            move |api, stream_url_path, temp_destination| async move {
+                stream_video(api, &stream_url_path, temp_destination).await
+            },
+        )
+        .await
     }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+struct DeliveryInfo {
+    delivery: Delivery,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+struct Delivery {
+    streams: Vec<Stream>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+struct Stream {
+    stream_url: String,
+}
+
+async fn get_stream_url_path(api: &Api, delivery_id: &str) -> Result<String> {
+    let post_data = make_deliver_info_post_data(delivery_id);
+    let delivery_info = api
+        .custom_request(
+            Url::parse("https://mediaweb.ap.panopto.com/Panopto/Pages/Viewer/DeliveryInfo.aspx")
+                .expect("Unable to parse Panopto DeliverInfo URL"),
+            Method::POST,
+            Some(&post_data),
+            Api::add_desktop_user_agent,
+        )
+        .await?
+        .json::<DeliveryInfo>()
+        .await
+        .map_err(|_| "Unable to deserialize JSON")?;
+
+    let mut delivery = delivery_info.delivery;
+    if delivery.streams.len() != 1 {
+        Err("Expected exactly one stream in external multimedia")
+    } else {
+        Ok(delivery.streams.pop().unwrap().stream_url)
+    }
+}
+
+/// Constructs the form params required for the post request to DeliveryInfo.aspx
+fn make_deliver_info_post_data(delivery_id: &str) -> HashMap<&str, &str> {
+    // These params are used by Panopto's web frontend,
+    // so we'll mimic all of it.  Not sure if there are any videos
+    // that need different selections of these params.
+    let mut post_data: HashMap<&str, &str> = HashMap::new();
+    post_data.insert("deliveryId", delivery_id);
+    post_data.insert("invocationId", "");
+    post_data.insert("isLiveNotes", "false");
+    post_data.insert("refreshAuthCookie", "true");
+    post_data.insert("isActiveBroadcast", "false");
+    post_data.insert("isEditing", "false");
+    post_data.insert("isKollectiveAgentInstalled", "false");
+    post_data.insert("isEmbed", "false");
+    post_data.insert("responseType", "json");
+    post_data
 }

@@ -1,5 +1,3 @@
-use winres;
-
 fn main() -> std::io::Result<()> {
     if cfg!(target_os = "windows") {
         // We need to set the 'longPathAware' manifest key, so that file paths with length >260 chars will work.

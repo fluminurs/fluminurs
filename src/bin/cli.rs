@@ -93,7 +93,7 @@ async fn load_modules_files(
     modules: &[Module],
     include_uploadable_folders: ModuleTypeFlags,
 ) -> Result<Vec<File>> {
-    let root_dirs = modules
+    let root_dirs_iter = modules
         .iter()
         .filter(|module| module.has_access())
         .map(|module| {
@@ -101,11 +101,10 @@ async fn load_modules_files(
                 module.workbin_root(|code| Path::new(code).to_owned()),
                 module.is_teaching(),
             )
-        })
-        .collect::<Vec<_>>();
+        });
 
-    let (files, errors) = future::join_all(root_dirs.into_iter().map(
-        |(root_dir, is_teaching)| async move {
+    let (files, errors) =
+        future::join_all(root_dirs_iter.map(|(root_dir, is_teaching)| async move {
             root_dir
                 .load(
                     api,
@@ -122,21 +121,20 @@ async fn load_modules_files(
                     sort_and_make_all_paths_unique(&mut files);
                     files
                 })
-        },
-    ))
-    .await
-    .into_iter()
-    .fold((vec![], vec![]), move |(mut ok, mut err), res| {
-        match res {
-            Ok(mut dir) => {
-                ok.append(&mut dir);
+        }))
+        .await
+        .into_iter()
+        .fold((vec![], vec![]), move |(mut ok, mut err), res| {
+            match res {
+                Ok(mut dir) => {
+                    ok.append(&mut dir);
+                }
+                Err(e) => {
+                    err.push(e);
+                }
             }
-            Err(e) => {
-                err.push(e);
-            }
-        }
-        (ok, err)
-    });
+            (ok, err)
+        });
     for e in errors {
         println!("Failed loading module files: {}", e);
     }
@@ -147,14 +145,13 @@ async fn load_modules_multimedia(
     api: &Api,
     modules: &[Module],
 ) -> Result<(Vec<InternalVideo>, Vec<ExternalVideo>)> {
-    let multimedias = modules
+    let multimedias_iter = modules
         .iter()
         .filter(|module| module.has_access())
-        .map(|module| module.multimedia_root(|code| Path::new(code).join(Path::new("Multimedia"))))
-        .collect::<Vec<_>>();
+        .map(|module| module.multimedia_root(|code| Path::new(code).join(Path::new("Multimedia"))));
 
     let (internal_videos, external_videos, errors) =
-        future::join_all(multimedias.into_iter().map(|multimedia| async move {
+        future::join_all(multimedias_iter.map(|multimedia| async move {
             multimedia.load(api).await.map(|(mut ivs, mut evs)| {
                 // to avoid duplicate files from being corrupted,
                 // we append the id to duplicate resources
@@ -188,15 +185,14 @@ async fn load_modules_multimedia(
 }
 
 async fn load_modules_weblectures(api: &Api, modules: &[Module]) -> Result<Vec<WebLectureVideo>> {
-    let weblectures = modules
+    let weblectures_iter = modules
         .iter()
         .filter(|module| module.has_access())
         .map(|module| {
             module.weblecture_root(|code| Path::new(code).join(Path::new("Web Lectures")))
-        })
-        .collect::<Vec<_>>();
+        });
 
-    let (files, errors) = future::join_all(weblectures.into_iter().map(|weblecture| async move {
+    let (files, errors) = future::join_all(weblectures_iter.map(|weblecture| async move {
         weblecture.load(api).await.map(|mut weblectures| {
             // to avoid duplicate files from being corrupted,
             // we append the id to duplicate resources
@@ -225,16 +221,15 @@ async fn load_modules_weblectures(api: &Api, modules: &[Module]) -> Result<Vec<W
 }
 
 async fn load_modules_conferences(api: &Api, modules: &[Module]) -> Result<Vec<ZoomRecording>> {
-    let conferences = modules
+    let conferences_iter = modules
         .iter()
         .filter(|module| module.has_access())
         .map(|module| {
             module.conferencing_root(|code| Path::new(code).join(Path::new("Conferences")))
-        })
-        .collect::<Vec<_>>();
+        });
 
     let (zoom_recordings, errors) =
-        future::join_all(conferences.into_iter().map(|conference| async move {
+        future::join_all(conferences_iter.map(|conference| async move {
             conference.load(api).await.map(|mut conferences| {
                 // to avoid duplicate files from being corrupted,
                 // we append the id to duplicate resources

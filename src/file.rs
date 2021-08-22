@@ -45,11 +45,7 @@ impl DirectoryHandle {
     }
 
     // loads all files recursively and returns a flattened list
-    pub fn load<'a>(
-        self,
-        api: &'a Api,
-        include_uploadable: bool,
-    ) -> BoxFuture<'a, Result<Vec<File>>> {
+    pub fn load(self, api: &Api, include_uploadable: bool) -> BoxFuture<Result<Vec<File>>> {
         debug_assert!(include_uploadable || !self.allow_upload);
 
         async move {
@@ -110,7 +106,7 @@ impl DirectoryHandle {
                                     sanitise_filename(
                                         format!(
                                             "{} - {}",
-                                            s.creator_name.as_deref().unwrap_or_else(|| "Unknown"),
+                                            s.creator_name.as_deref().unwrap_or("Unknown"),
                                             name_for_download
                                         )
                                         .as_str(),

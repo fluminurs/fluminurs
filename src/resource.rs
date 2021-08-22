@@ -77,7 +77,7 @@ impl<T: SimpleDownloadableResource> Resource for T {
 pub fn sort_and_make_all_paths_unique<T: Resource>(resources: &mut [T]) {
     resources.sort_unstable_by(|r1, r2| {
         r1.path()
-            .cmp(&r2.path())
+            .cmp(r2.path())
             .then_with(|| r1.last_updated().cmp(&r2.last_updated()).reverse())
     });
     // todo: This is not very right... conferences will append "(1)" or "(2)" etc if there are multiple links.
@@ -89,14 +89,14 @@ pub fn sort_and_make_all_paths_unique<T: Resource>(resources: &mut [T]) {
                 new_name
             });
             new_name.push(r.id());
-            r.path().extension().map(|e| {
+            if let Some(e) = r.path().extension() {
                 new_name.push(".");
                 new_name.push(e);
-            });
+            };
             r.path_mut().set_file_name(new_name);
             path
         } else {
-            r.path().as_ref()
+            r.path()
         }
     });
 }

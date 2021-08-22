@@ -2,11 +2,13 @@ use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
 use async_trait::async_trait;
-use reqwest::{Method, Url};
+use reqwest::Method;
 use serde::Deserialize;
 
 use crate::panopto;
-use crate::resource::SimpleDownloadableResource;
+use crate::resource;
+use crate::resource::{OverwriteMode, OverwriteResult, Resource};
+use crate::streamer::{stream_and_mux_videos, StreamSpec};
 use crate::util::{parse_time, sanitise_filename};
 use crate::{Api, ApiData, Result};
 
@@ -14,7 +16,6 @@ use crate::{Api, ApiData, Result};
 #[serde(rename_all = "camelCase")]
 struct WebLectureResponse {
     id: String,
-    name: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -88,7 +89,7 @@ impl WebLectureHandle {
 }
 
 #[async_trait(?Send)]
-impl SimpleDownloadableResource for WebLectureVideo {
+impl Resource for WebLectureVideo {
     fn id(&self) -> &str {
         &self.id
     }
@@ -104,21 +105,53 @@ impl SimpleDownloadableResource for WebLectureVideo {
         self.last_updated
     }
 
-    async fn get_download_url(&self, api: &Api) -> Result<Url> {
-        let response = panopto::launch(
+    async fn download(
+        &self,
+        api: &Api,
+        destination: &Path,
+        temp_destination: &Path,
+        overwrite: OverwriteMode,
+    ) -> Result<OverwriteResult> {
+        let context_id: &str = &self.module_id;
+        let resource_link_id: &str = &self.id;
+        resource::do_retryable_download(
             api,
-            &format!(
-                "lti/Launch/panopto?context_id={}&resource_link_id={}",
-                self.module_id, self.id
-            ),
+            destination,
+            temp_destination,
+            overwrite,
+            self.last_updated(),
+            move |api| launch_panopto_and_get_stream_specs(api, context_id, resource_link_id),
+            move |api, stream_specs, temp_destination| async move {
+                stream_and_mux_videos(api, &stream_specs, temp_destination).await
+            },
         )
-        .await?;
+        .await
+    }
+}
 
-        let html = response
-            .text()
-            .await
-            .map_err(|_| "Unable to get HTML response")?;
+async fn launch_panopto_and_get_stream_specs(
+    api: &Api,
+    context_id: &str,
+    resource_link_id: &str,
+) -> Result<Vec<StreamSpec>> {
+    let response = panopto::launch(
+        api,
+        &format!(
+            "lti/Launch/panopto?context_id={}&resource_link_id={}",
+            context_id, resource_link_id
+        ),
+    )
+    .await?;
 
-        panopto::extract_video_url_from_document(&html)
+    let delivery_id_opt =
+        response
+            .url()
+            .query_pairs()
+            .find_map(|(k, v)| if k == "id" { Some(v) } else { None });
+
+    if let Some(delivery_id) = delivery_id_opt {
+        panopto::get_stream_specs(api, &delivery_id).await
+    } else {
+        Err("Unable to get \"id\" query parameter of Panopto viewer")
     }
 }

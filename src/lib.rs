@@ -158,9 +158,13 @@ where
             .build()
             .map_err(|_| "Failed to build request")?;
 
-        let res = client.execute(request).await.map_err(|_| "HTTP error");
-        if let Ok(res) = res {
-            break res;
+        match client.execute(request).await {
+            Ok(res) => {
+                break res;
+            }
+            Err(e) => {
+                println!("Error in infinite retry HTTP for {} {}: {}", method, url, e);
+            }
         }
     };
     Ok(res)

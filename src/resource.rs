@@ -1,4 +1,4 @@
-use std::ffi::OsString;
+use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
@@ -223,10 +223,9 @@ async fn prepare_path(
             OverwriteMode::Skip => Ok((false, OverwriteResult::Skipped)), // don't download, because user wants to skip updated files
             OverwriteMode::Overwrite => Ok((true, OverwriteResult::Overwritten)), // do download, because user wants to overwrite updated files
             OverwriteMode::Rename => {
-                let mut new_stem = path
-                    .file_stem()
-                    .expect("File does not have name")
-                    .to_os_string();
+                let (path_stem, path_extension) =
+                    split_file_name_into_step_and_extension_properly(path.file_name());
+                let mut new_stem = path_stem.expect("File does not have name");
                 let date = chrono::DateTime::<chrono::Local>::from(old_time).date();
                 use chrono::Datelike;
                 new_stem.push(format!(
@@ -235,12 +234,11 @@ async fn prepare_path(
                     date.month(),
                     date.day()
                 ));
-                let path_extension = path.extension();
                 let mut i = 0;
                 let mut suffixed_stem = new_stem.clone();
                 let renamed_path = loop {
                     let renamed_path_without_ext = path.with_file_name(suffixed_stem);
-                    let renamed_path = if let Some(ext) = path_extension {
+                    let renamed_path = if let Some(ext) = &path_extension {
                         renamed_path_without_ext.with_extension(ext)
                     } else {
                         renamed_path_without_ext
@@ -299,4 +297,50 @@ async fn infinite_retry_download<
         };
     }
     Ok(())
+}
+
+/// This is like returning .file_stem() and .extension(), but is better
+/// because it understands file names with multiple extensions.
+/// For example, "test.tar.gz" is split into "test" and "tar.gz".
+/// This is required otherwise we get into an infinite loop when renaming files.
+/// We use platform-specific implementions to avoid the lossy conversions...
+/// very likely it doesn't matter at all, but for completeness... :P
+fn split_file_name_into_step_and_extension_properly(
+    file_name: Option<&OsStr>,
+) -> (Option<OsString>, Option<OsString>) {
+    #[cfg(unix)]
+    fn split_impl(name: &OsStr) -> (OsString, Option<OsString>) {
+        use std::os::unix::ffi::OsStrExt;
+        let bytes = name.as_bytes();
+        if let Some(pos) = bytes.iter().copied().position(|b| b == b'.') {
+            (
+                OsStr::from_bytes(&bytes[..pos]).to_os_string(),
+                Some(OsStr::from_bytes(&bytes[pos + 1..]).to_os_string()),
+            )
+        } else {
+            (name.to_os_string(), None)
+        }
+    }
+
+    #[cfg(windows)]
+    fn split_impl(name: &OsStr) -> (OsString, Option<OsString>) {
+        use std::os::windows::ffi::OsStrExt;
+        use std::os::windows::ffi::OsStringExt;
+        let wchars: Vec<u16> = name.encode_wide().collect();
+        if let Some(pos) = wchars.iter().copied().position(|b| b == (b'.' as u16)) {
+            (
+                OsString::from_wide(&wchars[..pos]),
+                Some(OsString::from_wide(&wchars[pos + 1..])),
+            )
+        } else {
+            (name.to_os_string(), None)
+        }
+    }
+
+    if let Some(name) = file_name {
+        let (stem, ext) = split_impl(name);
+        (Some(stem), ext)
+    } else {
+        (None, None)
+    }
 }

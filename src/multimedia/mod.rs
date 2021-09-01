@@ -5,10 +5,10 @@ use async_trait::async_trait;
 use futures_util::future;
 use reqwest::Method;
 use serde::Deserialize;
-use tokio::process::Command;
 
 use crate::resource;
-use crate::resource::{OverwriteMode, OverwriteResult, Resource, RetryableError, RetryableResult};
+use crate::resource::{OverwriteMode, OverwriteResult, Resource};
+use crate::streamer::stream_video;
 use crate::util::{parse_time, sanitise_filename};
 use crate::{Api, ApiData, Result};
 
@@ -160,35 +160,9 @@ impl Resource for InternalVideo {
             self.last_updated(),
             move |_| future::ready(Ok(self.stream_url_path.as_str())),
             move |api, stream_url_path, temp_destination| {
-                Self::stream_video(api, stream_url_path, temp_destination)
+                stream_video(api, stream_url_path, temp_destination)
             },
         )
         .await
-    }
-}
-
-impl InternalVideo {
-    async fn stream_video(
-        api: &Api,
-        stream_url_path: &str,
-        temp_destination: &Path,
-    ) -> RetryableResult<()> {
-        let success = Command::new(&api.ffmpeg_path)
-            .arg("-y") // flag to overwrite output file without prompting
-            .arg("-i")
-            .arg(stream_url_path)
-            .arg("-c")
-            .arg("copy")
-            .arg(temp_destination.as_os_str())
-            .output()
-            .await
-            .map_err(|_| RetryableError::Fail("Failed to start ffmpeg"))?
-            .status
-            .success();
-        if success {
-            Ok(())
-        } else {
-            Err(RetryableError::Retry("ffmpeg returned nonzero exit code"))
-        }
     }
 }

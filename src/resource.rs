@@ -116,6 +116,7 @@ pub enum OverwriteResult {
     Renamed { renamed_path: PathBuf },
 }
 
+#[derive(Copy, Clone)]
 pub enum RetryableError {
     Retry(Error),
     Fail(Error),

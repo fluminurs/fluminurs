@@ -7,7 +7,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::multimedia::Channel;
 use crate::panopto;
-use crate::resource::SimpleDownloadableResource;
+use crate::resource;
+use crate::resource::{OverwriteMode, OverwriteResult, Resource};
+use crate::streamer::stream_and_mux_videos;
 use crate::util::sanitise_filename;
 use crate::{Api, Result};
 
@@ -28,7 +30,6 @@ struct ExternalMultimediaResponseResponse {
 struct ExternalMultimediaIndividualResponse {
     #[serde(rename = "DeliveryID")]
     delivery_id: String,
-    viewer_url: String,
     session_name: String,
 }
 
@@ -47,7 +48,6 @@ struct ExternalMultimediaRequestQueryParameters {
 
 pub struct ExternalVideo {
     id: String,
-    html_url: String,
     path: PathBuf,
 }
 
@@ -114,7 +114,6 @@ pub(super) async fn load_external_channel(
         .into_iter()
         .map(|m| ExternalVideo {
             id: m.delivery_id,
-            html_url: m.viewer_url,
             path: channel_path.join(super::make_mp4_extension(Path::new(&sanitise_filename(
                 &m.session_name,
             )))),
@@ -123,7 +122,7 @@ pub(super) async fn load_external_channel(
 }
 
 #[async_trait(?Send)]
-impl SimpleDownloadableResource for ExternalVideo {
+impl Resource for ExternalVideo {
     fn id(&self) -> &str {
         &self.id
     }
@@ -140,14 +139,25 @@ impl SimpleDownloadableResource for ExternalVideo {
         SystemTime::UNIX_EPOCH
     }
 
-    async fn get_download_url(&self, api: &Api) -> Result<Url> {
-        let url =
-            Url::parse(&self.html_url).map_err(|_| "Unable to parse external multimedia URL")?;
-
-        let html = api
-            .get_text(url, Method::GET, None, Api::add_desktop_user_agent)
-            .await?;
-
-        panopto::extract_video_url_from_document(&html)
+    async fn download(
+        &self,
+        api: &Api,
+        destination: &Path,
+        temp_destination: &Path,
+        overwrite: OverwriteMode,
+    ) -> Result<OverwriteResult> {
+        let delivery_id: &str = self.id();
+        resource::do_retryable_download(
+            api,
+            destination,
+            temp_destination,
+            overwrite,
+            self.last_updated(),
+            move |api| panopto::get_stream_specs(api, delivery_id),
+            move |api, stream_specs, temp_destination| async move {
+                stream_and_mux_videos(api, &stream_specs, temp_destination).await
+            },
+        )
+        .await
     }
 }

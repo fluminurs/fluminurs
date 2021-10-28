@@ -8,7 +8,7 @@ use reqwest::{Method, Url};
 use serde::Deserialize;
 
 use crate::resource::SimpleDownloadableResource;
-use crate::util::{parse_time, sanitise_filename};
+use crate::util::{append_extension, parse_time, sanitise_filename};
 use crate::{Api, ApiData, Result};
 
 #[derive(Debug, Deserialize)]
@@ -19,6 +19,8 @@ struct ApiFileDirectory {
     file_name: Option<String>,
     allow_upload: Option<bool>,
     creator_name: Option<String>,
+    #[serde(rename = "creatorUserID")]
+    creator_user_id: Option<String>,
     last_updated_date: String,
 }
 
@@ -45,7 +47,12 @@ impl DirectoryHandle {
     }
 
     // loads all files recursively and returns a flattened list
-    pub fn load(self, api: &Api, include_uploadable: bool) -> BoxFuture<Result<Vec<File>>> {
+    pub fn load(
+        self,
+        api: &Api,
+        include_uploadable: bool,
+        regularize_uploadable: bool,
+    ) -> BoxFuture<Result<Vec<File>>> {
         debug_assert!(include_uploadable || !self.allow_upload);
 
         async move {
@@ -68,7 +75,7 @@ impl DirectoryHandle {
                                 allow_upload: s.allow_upload.unwrap_or(false),
                                 /* last_updated: parse_time(&s.last_updated_date), */
                             })
-                            .map(|dh| dh.load(api, include_uploadable)),
+                            .map(|dh| dh.load(api, include_uploadable, regularize_uploadable)),
                     )
                     .await
                     .into_iter()
@@ -103,14 +110,24 @@ impl DirectoryHandle {
                                 let name_for_download =
                                     s.file_name.as_deref().unwrap_or(s.name.as_str());
                                 if self.allow_upload {
-                                    sanitise_filename(
-                                        format!(
-                                            "{} - {}",
-                                            s.creator_name.as_deref().unwrap_or("Unknown"),
-                                            name_for_download
+                                    if regularize_uploadable {
+                                        sanitise_filename(
+                                            append_extension(
+                                                s.creator_user_id.as_deref().unwrap_or("Unknown"),
+                                                name_for_download,
+                                            )
+                                            .as_str(),
                                         )
-                                        .as_str(),
-                                    )
+                                    } else {
+                                        sanitise_filename(
+                                            format!(
+                                                "{} - {}",
+                                                s.creator_name.as_deref().unwrap_or("Unknown"),
+                                                name_for_download
+                                            )
+                                            .as_str(),
+                                        )
+                                    }
                                 } else {
                                     sanitise_filename(name_for_download)
                                 }

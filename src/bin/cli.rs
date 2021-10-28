@@ -92,6 +92,7 @@ async fn load_modules_files(
     api: &Api,
     modules: &[Module],
     include_uploadable_folders: ModuleTypeFlags,
+    regularize_uploadable: bool,
 ) -> Result<Vec<File>> {
     let root_dirs_iter = modules
         .iter()
@@ -113,6 +114,7 @@ async fn load_modules_files(
                     } else {
                         ModuleTypeFlags::TAKING
                     }),
+                    regularize_uploadable,
                 )
                 .await
                 .map(|mut files| {
@@ -412,6 +414,7 @@ async fn main() -> Result<()> {
                 .max_values(u64::max_value())
                 .possible_values(&["taking", "teaching", "all"]),
         )
+        .arg(Arg::with_name("regularize-uploadable").long("regularize-uploadable-files"))
         .arg(
             Arg::with_name("updated")
                 .long("updated")
@@ -485,6 +488,10 @@ async fn main() -> Result<()> {
             }
         })
         .unwrap_or_else(ModuleTypeFlags::empty);
+    let regularize_uploadable = matches.is_present("regularize-uploadable");
+    if regularize_uploadable && include_uploadable_folders == ModuleTypeFlags::empty() {
+        panic!("Cannot use --regularize-uploadable when --include-uploadable is not specified, since no uploadable folders are downloaded by default");
+    }
     let overwrite_mode = matches
         .value_of("updated")
         .map(|s| match s.to_lowercase().as_str() {
@@ -553,7 +560,13 @@ async fn main() -> Result<()> {
     }
 
     if do_files || download_destination.is_some() {
-        let module_file = load_modules_files(&api, &modules, include_uploadable_folders).await?;
+        let module_file = load_modules_files(
+            &api,
+            &modules,
+            include_uploadable_folders,
+            regularize_uploadable,
+        )
+        .await?;
 
         if do_files {
             list_resources(&module_file);

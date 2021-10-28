@@ -429,6 +429,14 @@ async fn main() -> Result<()> {
                 .number_of_values(1),
         )
         .arg(
+            Arg::with_name("modules")
+                .long("modules")
+                .takes_value(true)
+                .value_name("modules")
+                .min_values(1)
+                .max_values(u64::MAX),
+        )
+        .arg(
             Arg::with_name("ffmpeg")
                 .long("ffmpeg")
                 .takes_value(true)
@@ -493,6 +501,9 @@ async fn main() -> Result<()> {
             panic!("Invalid input term")
         }
     });
+    let specified_modules = matches
+        .values_of("modules")
+        .map(|it| it.collect::<Vec<&str>>());
 
     let (username, password) =
         get_credentials(&credential_file).expect("Unable to get credentials");
@@ -509,15 +520,33 @@ async fn main() -> Result<()> {
 
     let name = api.name().await?;
     println!("Hi {}!", name);
-    let modules = api.modules(specified_term).await?;
-    println!("You are taking:");
-    for module in modules.iter().filter(|m| m.is_taking()) {
-        println!("- {} {}", module.code, module.name);
-    }
-    println!("You are teaching:");
-    for module in modules.iter().filter(|m| m.is_teaching()) {
-        println!("- {} {}", module.code, module.name);
-    }
+    let all_modules = api.modules(specified_term).await?;
+    let modules = if let Some(module_codes) = specified_modules {
+        for module_code in &module_codes {
+            if !all_modules.iter().any(|m| m.code == *module_code) {
+                panic!("Module {} is not available", module_code);
+            }
+        }
+        let filtered_modules = all_modules
+            .into_iter()
+            .filter(|m| module_codes.iter().any(|code| m.code.as_str() == *code))
+            .collect::<Vec<Module>>();
+        println!("Selected modules:");
+        for module in &filtered_modules {
+            println!("- {} {}", module.code, module.name);
+        }
+        filtered_modules
+    } else {
+        println!("You are taking:");
+        for module in all_modules.iter().filter(|m| m.is_taking()) {
+            println!("- {} {}", module.code, module.name);
+        }
+        println!("You are teaching:");
+        for module in all_modules.iter().filter(|m| m.is_teaching()) {
+            println!("- {} {}", module.code, module.name);
+        }
+        all_modules
+    };
 
     if do_announcements {
         print_announcements(&api, &modules).await?;

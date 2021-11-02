@@ -15,6 +15,14 @@ pub fn sanitise_filename(name: &str) -> String {
     }
 }
 
+pub fn append_extension(stem: &str, ref_filename: &str) -> String {
+    if let Some((_, extension)) = ref_filename.split_once('.') {
+        format!("{}.{}", stem, extension)
+    } else {
+        stem.to_owned()
+    }
+}
+
 pub fn parse_time(time: &str) -> SystemTime {
     SystemTime::from(
         chrono::DateTime::<chrono::FixedOffset>::parse_from_rfc3339(time)

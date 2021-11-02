@@ -92,6 +92,7 @@ async fn load_modules_files(
     api: &Api,
     modules: &[Module],
     include_uploadable_folders: ModuleTypeFlags,
+    regularize_uploadable: bool,
 ) -> Result<Vec<File>> {
     let root_dirs_iter = modules
         .iter()
@@ -113,6 +114,7 @@ async fn load_modules_files(
                     } else {
                         ModuleTypeFlags::TAKING
                     }),
+                    regularize_uploadable,
                 )
                 .await
                 .map(|mut files| {
@@ -412,6 +414,7 @@ async fn main() -> Result<()> {
                 .max_values(u64::max_value())
                 .possible_values(&["taking", "teaching", "all"]),
         )
+        .arg(Arg::with_name("regularize-uploadable").long("regularize-uploadable-files"))
         .arg(
             Arg::with_name("updated")
                 .long("updated")
@@ -427,6 +430,14 @@ async fn main() -> Result<()> {
                 .takes_value(true)
                 .value_name("term")
                 .number_of_values(1),
+        )
+        .arg(
+            Arg::with_name("modules")
+                .long("modules")
+                .takes_value(true)
+                .value_name("modules")
+                .min_values(1)
+                .max_values(u64::MAX),
         )
         .arg(
             Arg::with_name("ffmpeg")
@@ -477,6 +488,10 @@ async fn main() -> Result<()> {
             }
         })
         .unwrap_or_else(ModuleTypeFlags::empty);
+    let regularize_uploadable = matches.is_present("regularize-uploadable");
+    if regularize_uploadable && include_uploadable_folders == ModuleTypeFlags::empty() {
+        panic!("Cannot use --regularize-uploadable when --include-uploadable is not specified, since no uploadable folders are downloaded by default");
+    }
     let overwrite_mode = matches
         .value_of("updated")
         .map(|s| match s.to_lowercase().as_str() {
@@ -493,6 +508,9 @@ async fn main() -> Result<()> {
             panic!("Invalid input term")
         }
     });
+    let specified_modules = matches
+        .values_of("modules")
+        .map(|it| it.collect::<Vec<&str>>());
 
     let (username, password) =
         get_credentials(&credential_file).expect("Unable to get credentials");
@@ -509,22 +527,46 @@ async fn main() -> Result<()> {
 
     let name = api.name().await?;
     println!("Hi {}!", name);
-    let modules = api.modules(specified_term).await?;
-    println!("You are taking:");
-    for module in modules.iter().filter(|m| m.is_taking()) {
-        println!("- {} {}", module.code, module.name);
-    }
-    println!("You are teaching:");
-    for module in modules.iter().filter(|m| m.is_teaching()) {
-        println!("- {} {}", module.code, module.name);
-    }
+    let all_modules = api.modules(specified_term).await?;
+    let modules = if let Some(module_codes) = specified_modules {
+        for module_code in &module_codes {
+            if !all_modules.iter().any(|m| m.code == *module_code) {
+                panic!("Module {} is not available", module_code);
+            }
+        }
+        let filtered_modules = all_modules
+            .into_iter()
+            .filter(|m| module_codes.iter().any(|code| m.code.as_str() == *code))
+            .collect::<Vec<Module>>();
+        println!("Selected modules:");
+        for module in &filtered_modules {
+            println!("- {} {}", module.code, module.name);
+        }
+        filtered_modules
+    } else {
+        println!("You are taking:");
+        for module in all_modules.iter().filter(|m| m.is_taking()) {
+            println!("- {} {}", module.code, module.name);
+        }
+        println!("You are teaching:");
+        for module in all_modules.iter().filter(|m| m.is_teaching()) {
+            println!("- {} {}", module.code, module.name);
+        }
+        all_modules
+    };
 
     if do_announcements {
         print_announcements(&api, &modules).await?;
     }
 
     if do_files || download_destination.is_some() {
-        let module_file = load_modules_files(&api, &modules, include_uploadable_folders).await?;
+        let module_file = load_modules_files(
+            &api,
+            &modules,
+            include_uploadable_folders,
+            regularize_uploadable,
+        )
+        .await?;
 
         if do_files {
             list_resources(&module_file);

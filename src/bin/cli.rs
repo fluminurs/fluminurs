@@ -490,7 +490,7 @@ async fn main() -> Result<()> {
                 .takes_value(true)
                 .multiple(true)
                 .number_of_values(1)
-                .help("Glob of files to include. Takes precedence over exclude"),
+                .help("Glob of file paths to include. Takes precedence over exclude"),
         )
         .get_matches();
     let credential_file = matches

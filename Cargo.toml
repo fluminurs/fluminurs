@@ -18,7 +18,7 @@ required-features = ["cli"]
 
 [features]
 default = []
-cli = ["clap", "rpassword"]
+cli = ["clap", "globset", "rpassword"]
 with-env-logger = ['env_logger']
 
 [profile.release]
@@ -36,6 +36,7 @@ clap = { version = "2.33", optional = true }
 env_logger = { version = "0.9", optional = true }
 filetime = "0.2"
 futures-util = "0.3"
+globset = { version = "0.4", optional = true }
 htmlescape = "0.3"
 rand = "0.8"
 regex = "1.5"

@@ -31,6 +31,7 @@ pub struct WebLectureHandle {
     path: PathBuf,
 }
 
+#[derive(Debug, Clone)]
 pub struct WebLectureVideo {
     module_id: String,
     id: String,
@@ -88,7 +89,7 @@ impl WebLectureHandle {
     }
 }
 
-#[async_trait(?Send)]
+#[async_trait]
 impl Resource for WebLectureVideo {
     fn id(&self) -> &str {
         &self.id

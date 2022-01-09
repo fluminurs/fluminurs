@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 
 use clap::{App, Arg};
 use futures_util::{future, stream, StreamExt};
+use globset::{Glob, GlobSet, GlobSetBuilder};
 use serde::{Deserialize, Serialize};
 
 use fluminurs::conferencing::ZoomRecording;
@@ -259,6 +260,33 @@ async fn load_modules_conferences(api: &Api, modules: &[Module]) -> Result<Vec<Z
     Ok(zoom_recordings)
 }
 
+fn filter_resources<T: Resource>(
+    resources: Vec<T>,
+    include_globset: &Option<GlobSet>,
+    exclude_globset: &Option<GlobSet>,
+) -> Vec<T> {
+    if include_globset.is_none() && exclude_globset.is_none() {
+        resources
+    } else {
+        resources
+            .into_iter()
+            .filter(|resource| {
+                let excluded = exclude_globset
+                    .as_ref()
+                    .map(|glob_set| glob_set.is_match(resource.path()))
+                    .unwrap_or(false);
+                let included = include_globset
+                    .as_ref()
+                    .map(|glob_set| glob_set.is_match(resource.path()))
+                    .unwrap_or(false);
+
+                // `include` takes precedence over `exclude`
+                !excluded || included
+            })
+            .collect::<Vec<_>>()
+    }
+}
+
 fn list_resources<T: Resource>(resources: &[T]) {
     for resource in resources {
         println!("{}", resource.path().display())
@@ -448,6 +476,22 @@ async fn main() -> Result<()> {
                 .default_value("ffmpeg")
                 .help("Path to ffmpeg executable for downloading multimedia"),
         )
+        .arg(
+            Arg::with_name("exclude")
+                .long("exclude")
+                .takes_value(true)
+                .multiple(true)
+                .number_of_values(1)
+                .help("Glob of file paths to exclude"),
+        )
+        .arg(
+            Arg::with_name("include")
+                .long("include")
+                .takes_value(true)
+                .multiple(true)
+                .number_of_values(1)
+                .help("Glob of file paths to include. Takes precedence over exclude"),
+        )
         .get_matches();
     let credential_file = matches
         .value_of("credential-file")
@@ -511,6 +555,20 @@ async fn main() -> Result<()> {
     let specified_modules = matches
         .values_of("modules")
         .map(|it| it.collect::<Vec<&str>>());
+    let exclude_globset = matches.values_of("exclude").and_then(|values| {
+        let mut builder = GlobSetBuilder::new();
+        for glob in values {
+            builder.add(Glob::new(glob).ok()?);
+        }
+        builder.build().ok()
+    });
+    let include_globset = matches.values_of("include").and_then(|values| {
+        let mut builder = GlobSetBuilder::new();
+        for glob in values {
+            builder.add(Glob::new(glob).ok()?);
+        }
+        builder.build().ok()
+    });
 
     let (username, password) =
         get_credentials(&credential_file).expect("Unable to get credentials");
@@ -567,6 +625,7 @@ async fn main() -> Result<()> {
             regularize_uploadable,
         )
         .await?;
+        let module_file = filter_resources(module_file, &include_globset, &exclude_globset);
 
         if do_files {
             list_resources(&module_file);
@@ -580,6 +639,16 @@ async fn main() -> Result<()> {
     if do_multimedia || multimedia_download_destination.is_some() {
         let (module_internal_multimedia, module_external_multimedia) =
             load_modules_multimedia(&api, &modules).await?;
+        let module_internal_multimedia = filter_resources(
+            module_internal_multimedia,
+            &include_globset,
+            &exclude_globset,
+        );
+        let module_external_multimedia = filter_resources(
+            module_external_multimedia,
+            &include_globset,
+            &exclude_globset,
+        );
 
         if do_multimedia {
             list_resources(&module_internal_multimedia);
@@ -614,6 +683,8 @@ async fn main() -> Result<()> {
 
     if do_weblectures || weblectures_download_destination.is_some() {
         let module_weblectures = load_modules_weblectures(&api, &modules).await?;
+        let module_weblectures =
+            filter_resources(module_weblectures, &include_globset, &exclude_globset);
 
         if do_weblectures {
             list_resources(&module_weblectures);
@@ -626,6 +697,8 @@ async fn main() -> Result<()> {
 
     if do_conferences || conferences_download_destination.is_some() {
         let module_conferences = load_modules_conferences(&api, &modules).await?;
+        let module_conferences =
+            filter_resources(module_conferences, &include_globset, &exclude_globset);
 
         if do_conferences {
             list_resources(&module_conferences);

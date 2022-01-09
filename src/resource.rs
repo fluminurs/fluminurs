@@ -1,4 +1,5 @@
 use std::ffi::{OsStr, OsString};
+use std::marker::Sync;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
@@ -9,7 +10,7 @@ use tokio::io::AsyncWriteExt;
 
 use crate::{Api, Error, Result};
 
-#[async_trait(?Send)]
+#[async_trait]
 pub trait Resource {
     fn id(&self) -> &str;
     fn path(&self) -> &Path;
@@ -24,7 +25,7 @@ pub trait Resource {
     ) -> Result<OverwriteResult>;
 }
 
-#[async_trait(?Send)]
+#[async_trait]
 pub trait SimpleDownloadableResource {
     fn id(&self) -> &str;
     fn path(&self) -> &Path;
@@ -33,8 +34,8 @@ pub trait SimpleDownloadableResource {
     async fn get_download_url(&self, api: &Api) -> Result<Url>;
 }
 
-#[async_trait(?Send)]
-impl<T: SimpleDownloadableResource> Resource for T {
+#[async_trait]
+impl<T: SimpleDownloadableResource + Sync> Resource for T {
     fn id(&self) -> &str {
         self.id()
     }
@@ -108,6 +109,7 @@ pub enum OverwriteMode {
     Rename,
 }
 
+#[derive(Clone)]
 pub enum OverwriteResult {
     NewFile,
     AlreadyHave,

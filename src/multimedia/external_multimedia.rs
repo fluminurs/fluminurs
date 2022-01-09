@@ -46,6 +46,7 @@ struct ExternalMultimediaRequestQueryParameters {
     pub folder_id: String,
 }
 
+#[derive(Debug, Clone)]
 pub struct ExternalVideo {
     id: String,
     path: PathBuf,
@@ -121,7 +122,7 @@ pub(super) async fn load_external_channel(
         .collect::<Vec<_>>())
 }
 
-#[async_trait(?Send)]
+#[async_trait]
 impl Resource for ExternalVideo {
     fn id(&self) -> &str {
         &self.id
